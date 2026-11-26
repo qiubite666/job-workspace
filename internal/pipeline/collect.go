@@ -4,13 +4,12 @@
 // 设计约定：
 //   - 本包**不感知任何具体平台**，只依赖 platform.Adapter 接口，新增平台时本层代码零改动；
 //   - 单个平台、单页失败都会被归一进 Report，绝不向上返回 error；
-//   - 只有「参数非法 / 配置无法加载 / 文件读取失败」这类全局错误才返回 error；
-//   - sample / local 模式不发起任何网络请求。
+//   - 只有「参数非法 / 配置无法加载」这类全局错误才返回 error；
+//   - 采集只有联网一条路径，不读取任何本地示例或抓包文件。
 package pipeline
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
@@ -29,25 +28,12 @@ import (
 	"jobworkspace/internal/ratelimit"
 )
 
-// 采集模式。Params.Mode 为空时按 sample 处理，与 CLI 默认值保持一致。
-const (
-	// ModeSample 直接读取内置示例数据，不联网。
-	ModeSample = "sample"
-	// ModeLocal 读取本地保存的原始响应文件，按适配器映射，不联网。
-	ModeLocal = "local"
-	// ModeLive 按配置逐平台逐页请求真实接口。
-	ModeLive = "live"
-)
-
-// sampleFile 是 sample 模式默认读取的示例数据路径（相对工作目录）。
-const sampleFile = "data/jobs.sample.json"
-
 // Options 是一次采集的全部输入。
 //
 // 除 Params 外的字段都可留空：Adapters 为空时由 catalog.Build 构建，
 // ClientFactory 为空时按配置构造，Log 为空时用 slog.Default，Now 为空时用 time.Now。
 type Options struct {
-	Config        *config.Config                         // 已加载的配置，sample 模式可为空
+	Config        *config.Config                         // 已加载的配置，必填（否则无法联网）
 	Adapters      []platform.Adapter                     // 适配器列表，空则用 catalog.Build(Config)
 	Params        model.Params                           // 采集参数
 	Log           *slog.Logger                           // 结构化日志
@@ -58,7 +44,7 @@ type Options struct {
 
 // Collect 执行一次采集并返回岗位与报告。
 //
-// 返回的 error 仅表示全局性失败（参数非法、示例文件不可读、本地响应文件不可解析）；
+// 返回的 error 仅表示全局性失败（配置缺失、没有可用适配器）；
 // 平台级故障一律写入 Report.Platforms[i].Errors 与 Status。
 func Collect(ctx context.Context, opt Options) (model.CollectResult, error) {
 	if ctx == nil {
@@ -67,10 +53,6 @@ func Collect(ctx context.Context, opt Options) (model.CollectResult, error) {
 	now := resolveNow(opt)
 	log := resolveLog(opt)
 	params := opt.Params
-	mode := strings.ToLower(strings.TrimSpace(params.Mode))
-	if mode == "" {
-		mode = ModeSample
-	}
 
 	started := now()
 	report := model.Report{
@@ -79,21 +61,7 @@ func Collect(ctx context.Context, opt Options) (model.CollectResult, error) {
 		Platforms: []model.PlatformStat{},
 	}
 
-	var (
-		jobs  []model.Job
-		stats []model.PlatformStat
-		err   error
-	)
-	switch mode {
-	case ModeSample:
-		jobs, stats, err = collectSample(params)
-	case ModeLocal:
-		jobs, stats, err = collectLocal(opt, params, log, now)
-	case ModeLive:
-		jobs, stats, err = collectLive(ctx, opt, params, log, now)
-	default:
-		return model.CollectResult{}, fmt.Errorf("未知采集模式 %q（可选 sample/local/live）", params.Mode)
-	}
+	jobs, stats, err := collectLive(ctx, opt, params, log, now)
 	if err != nil {
 		return model.CollectResult{}, err
 	}
@@ -124,113 +92,12 @@ func Collect(ctx context.Context, opt Options) (model.CollectResult, error) {
 	return model.CollectResult{Jobs: unique, Report: report}, nil
 }
 
-// ---------- sample ----------
-
-// collectSample 读取示例数据文件，只做去重与排序（去重排序在 Collect 内统一完成）。
-func collectSample(params model.Params) ([]model.Job, []model.PlatformStat, error) {
-	path := sampleFile
-	if strings.TrimSpace(params.File) != "" {
-		path = strings.TrimSpace(params.File)
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, nil, fmt.Errorf("读取示例数据 %s 失败: %w", path, err)
-	}
-	var jobs []model.Job
-	if err := json.Unmarshal(data, &jobs); err != nil {
-		return nil, nil, fmt.Errorf("解析示例数据 %s 失败: %w", path, err)
-	}
-	stat := model.PlatformStat{
-		ID:       ModeSample,
-		Name:     "示例数据",
-		Status:   "ok",
-		Pages:    1,
-		Fetched:  len(jobs),
-		Mapped:   len(jobs),
-		Attempts: []model.Attempt{},
-		Errors:   []model.ErrItem{},
-	}
-	return jobs, []model.PlatformStat{stat}, nil
-}
-
-// ---------- local ----------
-
-// collectLocal 读取本地原始响应文件，按适配器逐条映射。
-func collectLocal(opt Options, params model.Params, log *slog.Logger, now func() time.Time) ([]model.Job, []model.PlatformStat, error) {
-	path := strings.TrimSpace(params.File)
-	if path == "" {
-		return nil, nil, fmt.Errorf("mode=local 必须指定 --file")
-	}
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		return nil, nil, fmt.Errorf("读取本地响应文件 %s 失败: %w", path, err)
-	}
-	var root any
-	if err := json.Unmarshal(raw, &root); err != nil {
-		return nil, nil, fmt.Errorf("解析本地响应文件 %s 失败: %w", path, err)
-	}
-
-	adapters := selectAdapters(opt, params.Platforms)
-	if len(adapters) == 0 {
-		return nil, nil, fmt.Errorf("没有可用的平台适配器（检查 --platforms 或配置）")
-	}
-
-	collectedAt := now().UTC().Format(time.RFC3339)
-	stats := make([]model.PlatformStat, 0, len(adapters))
-	var jobs []model.Job
-
-	for _, a := range adapters {
-		cfg := lookupConfig(opt.Config, a.ID())
-		listPath := ""
-		if cfg != nil {
-			listPath = cfg.ListPath
-		}
-		items := extractItems(root, listPath)
-
-		stat := model.PlatformStat{
-			ID:       a.ID(),
-			Name:     adapterName(a),
-			Status:   "ok",
-			Pages:    1,
-			Fetched:  len(items),
-			Attempts: []model.Attempt{},
-			Errors:   []model.ErrItem{},
-		}
-		if len(items) == 0 {
-			stat.Errors = append(stat.Errors, model.ErrItem{
-				Code: string(errs.CodeEmpty), Message: "本地文件中未找到岗位数组",
-			})
-			stat.Status = "failed"
-			stats = append(stats, stat)
-			continue
-		}
-
-		rt := buildRuntime(nil, cfg, log, now)
-		spec := adapterSpec(a)
-		ctx := mapping.Context{Keyword: params.Query, QueryCity: params.City, CollectedAt: collectedAt}
-		for _, rawItem := range items {
-			draft, mErr := a.MapItem(rt, rawItem)
-			if mErr != nil {
-				stat.Dropped++
-				code, msg, _ := errs.Info(mErr)
-				stat.Errors = append(stat.Errors, model.ErrItem{Code: string(code), Message: msg, Page: 1})
-				continue
-			}
-			jobs = append(jobs, mapping.Finalize(draft, spec, ctx))
-			stat.Mapped++
-		}
-		stat.Status = finalizeStatus(stat)
-		stats = append(stats, stat)
-	}
-	return jobs, stats, nil
-}
-
 // ---------- live ----------
 
 // collectLive 按配置逐平台逐页请求真实接口。
 func collectLive(ctx context.Context, opt Options, params model.Params, log *slog.Logger, now func() time.Time) ([]model.Job, []model.PlatformStat, error) {
 	if opt.Config == nil {
-		return nil, nil, fmt.Errorf("mode=live 需要已加载的配置")
+		return nil, nil, fmt.Errorf("采集需要已加载的配置（Config 为空）")
 	}
 	adapters := selectAdapters(opt, params.Platforms)
 	if len(adapters) == 0 {
@@ -415,14 +282,6 @@ func selectAdapters(opt Options, want []string) []platform.Adapter {
 	return out
 }
 
-// lookupConfig 安全地按 ID 取平台配置（Config 可能为空）。
-func lookupConfig(cfg *config.Config, id string) *config.Platform {
-	if cfg == nil {
-		return nil
-	}
-	return cfg.Platform(id)
-}
-
 // buildClient 构造 HTTP 客户端：优先使用注入的工厂，否则按配置装配限速/重试/robots。
 func buildClient(opt Options, cfg *config.Platform, params model.Params, log *slog.Logger) *httpx.Client {
 	if opt.ClientFactory != nil {
@@ -459,7 +318,7 @@ func resolveCookie(cfg *config.Platform, explicit string) string {
 	return strings.TrimSpace(os.Getenv(cfg.CookieEnv))
 }
 
-// buildRuntime 组装适配器运行时；client 可为空（local 模式）。
+// buildRuntime 组装适配器运行时；client 为本次采集使用的 HTTP 客户端。
 func buildRuntime(client *httpx.Client, cfg *config.Platform, log *slog.Logger, now func() time.Time) *platform.Runtime {
 	rt := &platform.Runtime{Client: client, Config: cfg, Log: log, Now: now}
 	if cfg != nil {
@@ -528,53 +387,6 @@ func sortJobs(jobs []model.Job) {
 		}
 		return a.ID < b.ID
 	})
-}
-
-// extractItems 按点路径取条目数组，失败时依次回退到常见结构。
-func extractItems(root any, listPath string) []map[string]any {
-	if m, ok := root.(map[string]any); ok {
-		if items := toItems(readPath(m, listPath)); len(items) > 0 {
-			return items
-		}
-		for _, fallback := range []string{"jobList", "zpData.jobList"} {
-			if items := toItems(readPath(m, fallback)); len(items) > 0 {
-				return items
-			}
-		}
-	}
-	return toItems(root)
-}
-
-// readPath 是 mapping.ReadPath 的空路径安全包装。
-func readPath(m map[string]any, path string) any {
-	if strings.TrimSpace(path) == "" {
-		return nil
-	}
-	v, ok := mapping.ReadPath(m, path)
-	if !ok {
-		return nil
-	}
-	return v
-}
-
-// toItems 把任意已取出的一层结构转成条目数组。
-func toItems(v any) []map[string]any {
-	switch list := v.(type) {
-	case []any:
-		out := make([]map[string]any, 0, len(list))
-		for _, it := range list {
-			if m, ok := it.(map[string]any); ok {
-				out = append(out, m)
-			}
-		}
-		return out
-	case []map[string]any:
-		return list
-	case map[string]any:
-		// 单条目也算一条数据。
-		return []map[string]any{list}
-	}
-	return nil
 }
 
 // ---------- 基础工具 ----------

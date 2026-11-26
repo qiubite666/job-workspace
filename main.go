@@ -2,7 +2,7 @@
 //
 // 五个子命令：
 //
-//	collect  采集岗位并落盘（sample / local / live 三种模式）
+//	collect  联网采集岗位并落盘
 //	serve    启动本地工作台 Web 服务
 //	platforms 列出已注册平台与配置状态
 //	doctor   体检：Go 版本、数据目录、适配器、cookie 可达性
@@ -90,9 +90,9 @@ func usage(w *os.File) {
   jobworkspace doctor              环境体检
   jobworkspace user      <add|list|passwd|delete>   后台账号管理
 
-collect 参数: --query --city --pages --page-size --platforms --mode --file
-              --cookie --allow-disallowed --out --json --quiet --config
-serve 参数:   --addr --config
+collect 参数: --query --city --pages --page-size --platforms --cookie --cookie-file
+              --allow-disallowed --out --json --quiet --config
+serve 参数:   --addr --data --cookie-file --config
 user 参数:    --data --username --name --role --password
 `, version)
 }
@@ -152,8 +152,6 @@ func runCollect(args []string) int {
 		pages      = fs.Int("pages", 0, "采集页数，0 表示取配置默认值")
 		pageSize   = fs.Int("page-size", 0, "每页条数，0 表示取配置默认值")
 		platformsF = fs.String("platforms", "", "限定平台，逗号分隔，如 boss,liepin")
-		mode       = fs.String("mode", pipeline.ModeSample, "采集模式：sample|local|live")
-		file       = fs.String("file", "", "mode=local 时的原始响应文件路径")
 		cookie     = fs.String("cookie", "", "登录态 cookie（优先级最高，但会留在 shell 历史里，不推荐）")
 		cookieFile = fs.String("cookie-file", "", "从文件读取登录态 cookie，推荐用于部署（0600 权限，避免进环境变量）")
 		allow      = fs.Bool("allow-disallowed", false, "显式放行 robots.txt 禁止的路径")
@@ -172,14 +170,6 @@ func runCollect(args []string) int {
 		return 1
 	}
 	initAdapters()
-
-	modeValue := strings.ToLower(strings.TrimSpace(*mode))
-	switch modeValue {
-	case pipeline.ModeSample, pipeline.ModeLocal, pipeline.ModeLive:
-	default:
-		fmt.Fprintf(os.Stderr, "非法的 --mode %q：可选 sample|local|live\n", *mode)
-		return 1
-	}
 
 	// cookie 取值优先级：--cookie > --cookie-file > 环境变量 BOSS_COOKIE。
 	// 部署场景推荐 --cookie-file：凭据不进入 systemd 的 EnvironmentFile（省掉引号与分号解析的坑），
@@ -211,8 +201,6 @@ func runCollect(args []string) int {
 		Pages:           pagesValue,
 		PageSize:        *pageSize,
 		Platforms:       splitList(*platformsF),
-		Mode:            modeValue,
-		File:            strings.TrimSpace(*file),
 		Cookie:          cookieValue,
 		AllowDisallowed: *allow,
 	}
@@ -221,13 +209,11 @@ func runCollect(args []string) int {
 	}
 
 	opt := pipeline.Options{
-		Config: cfg,
-		Params: params,
-		Log:    logger,
-		Now:    time.Now,
-	}
-	if modeValue == pipeline.ModeLive || modeValue == pipeline.ModeLocal {
-		opt.Adapters = catalog.Build(cfg)
+		Config:   cfg,
+		Adapters: catalog.Build(cfg),
+		Params:   params,
+		Log:      logger,
+		Now:      time.Now,
 	}
 	if !*quiet {
 		opt.Progress = func(format string, a ...any) {
@@ -542,7 +528,7 @@ func checkCookies(cfg *config.Config) []check {
 			out = append(out, check{"ok", "Cookie " + p.ID, env + " 已设置"})
 			continue
 		}
-		out = append(out, check{"warn", "Cookie " + p.ID, env + " 未设置，live 采集会返回 AUTH_REQUIRED"})
+		out = append(out, check{"warn", "Cookie " + p.ID, env + " 未设置，采集会返回 AUTH_REQUIRED"})
 	}
 	return out
 }
@@ -554,14 +540,10 @@ func checkDataSource(dataDir string) check {
 	if err != nil {
 		return check{"warn", "数据来源", err.Error()}
 	}
-	switch source {
-	case store.SourceCollected:
+	if source == store.SourceCollected {
 		return check{"ok", "数据来源", fmt.Sprintf("已采集 %d 条（%s/%s）", len(jobs), dataDir, store.JobsFile)}
-	case store.SourceSample:
-		return check{"ok", "数据来源", fmt.Sprintf("示例数据 %d 条（请先跑 collect --mode=live）", len(jobs))}
-	default:
-		return check{"warn", "数据来源", "暂无数据，请先执行 jobworkspace collect"}
 	}
+	return check{"warn", "数据来源", "暂无数据，请先执行 jobworkspace collect"}
 }
 
 // ---------- 工具 ----------

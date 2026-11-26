@@ -6,7 +6,7 @@ import (
 
 // GetJob 按 ID 查找单个岗位。
 //
-// 数据来源与 LoadJobs 一致：优先 jobs.json，其次只读的 jobs.sample.json。
+// 数据来源与 LoadJobs 一致：只读 jobs.json，不存在时视为无数据。
 // 未找到时返回 (零值, false, nil)，不把「不存在」当成错误。
 //
 // 注意：这里持的是与 MergeAndSave / SaveJobs 同一把 s.mu，
@@ -89,10 +89,10 @@ func (s *Store) DeleteJob(id string) (existed bool, err error) {
 
 // ListJobs 返回「可管理」的岗位集合：只读 jobs.json，不回退示例数据。
 //
-// 与 LoadJobs 的差别：LoadJobs 在 jobs.json 缺失时会回退 data/jobs.sample.json
-// 供前端演示；但后台管理面对的是真实业务数据，示例数据不属于它，
-// 否则会出现「列表里有、点编辑却 404」，以及「示例数据被写进采集产物、
-// source 从 sample 变成 collected」这类失真。
+// 与 LoadJobs 的差别：LoadJobs 会顺带返回数据来源（collected / empty），
+// 后台管理只需要数据本身，且同样绝不允许把不存在的数据当成可编辑基线，
+// 否则会出现「列表里有、点编辑却 404」，以及「空态被写进采集产物、
+// source 从 empty 变成 collected」这类失真。
 func (s *Store) ListJobs() ([]model.Job, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

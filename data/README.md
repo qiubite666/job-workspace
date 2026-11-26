@@ -1,23 +1,20 @@
 # data 目录说明
 
-本目录下**仅以下两个文件入库**，它们都是**为演示与测试合成的假数据**：
+本目录只存放**运行产物**，全部已被 `.gitignore` 排除，不入库：
 
-| 文件 | 用途 | 性质 |
-|---|---|---|
-| `samples/boss.raw.json` | 模拟 BOSS 直聘 `joblist.json` 的响应结构，用于 `--mode=local` 验证「响应解析 → 字段映射」链路 | 结构照真实接口编排；**所有岗位、薪资、招聘者、`encryptJobId` 均为虚构** |
-| `jobs.sample.json` | 已是 `model.Job` 结构的示例岗位，用于 `--mode=sample` 零网络自检与前端离线兜底 | 由上一个文件推导并补全，**同样为虚构** |
+| 文件 | 用途 |
+|---|---|
+| `jobs.json` | `collect` 的采集结果（按 ID 合并写入），可能包含真实抓取的岗位与公司信息 |
+| `collect.report.json` | 最近一次采集的可观测报告（含查询词、城市、各平台耗时与错误码） |
 
-关于公司名：为了让界面看起来接近真实使用场景，示例中使用了若干**公开知名企业的名称作为占位**，
-但对应的职位、薪资、招聘者、福利标签、发布时间**全部是编造的，不代表任何企业真实在招岗位**，
-也不构成招聘信息。请勿将其当作真实招聘数据引用或传播。
+采集只有联网一条路径，仓库不再内置任何示例数据或抓包文件：
+`jobs.json` 不存在时 `LoadJobs` 返回空列表（前端展示空态），不会再回退到示例数据。
 
-以下文件属于**运行产物，已被 `.gitignore` 排除，不会入库**：
-
-- `jobs.json`：`collect` 的采集结果，可能包含真实抓取的岗位与公司信息；
-- `collect.report.json`：最近一次采集的可观测报告（含查询词、城市、各平台耗时与错误码）。
-
-如果你要在本地复现演示数据：
+首次使用请直接跑一次真实采集：
 
 ```bash
-go run . collect --mode=local --file=data/samples/boss.raw.json --platforms=boss --query=Java --city=北京
+go run . collect --query=Java --city=北京 --pages=2 --platforms=boss
 ```
+
+无 cookie 时 BOSS 会返回 `AUTH_REQUIRED`，请通过 `--cookie` / `--cookie-file` /
+环境变量 `BOSS_COOKIE` 提供登录态；robots.txt 默认拦截，确需放行时显式加 `--allow-disallowed`。

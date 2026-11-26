@@ -84,14 +84,14 @@ type JobDraft struct {
 }
 
 // Params 是一次采集的输入参数。
+//
+// 采集只有联网一条路径，因此不再携带模式与本地文件字段。
 type Params struct {
 	Query           string   `json:"query"`
 	City            string   `json:"city"`
 	Pages           int      `json:"pages"`
 	PageSize        int      `json:"pageSize"`
 	Platforms       []string `json:"platforms,omitempty"` // 限定平台，空=全部启用
-	Mode            string   `json:"mode"`                // sample | local | live
-	File            string   `json:"file,omitempty"`      // mode=local 的原始响应文件
 	Cookie          string   `json:"-"`                   // 不下发到前端、不落盘
 	AllowDisallowed bool     `json:"-"`                   // 显式放行 robots 禁止路径
 }

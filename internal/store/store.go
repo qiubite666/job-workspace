@@ -1,8 +1,7 @@
 // Package store 负责采集数据的本地持久化。
 //
 // 只做三件事：读、写、按 ID 合并。文件布局固定：
-//   - jobs.json            采集结果（写入目标）
-//   - jobs.sample.json     随包分发的示例数据（只读兜底）
+//   - jobs.json            采集结果（写入目标，也是唯一数据来源）
 //   - collect.report.json  最近一次采集报告
 //
 // 写入统一走「临时文件 + rename」，避免进程中断留下半截 JSON。
@@ -24,15 +23,11 @@ import (
 const (
 	// JobsFile 是采集结果文件名。
 	JobsFile = "jobs.json"
-	// SampleFile 是示例数据文件名。
-	SampleFile = "jobs.sample.json"
 	// ReportFile 是采集报告文件名。
 	ReportFile = "collect.report.json"
 
 	// SourceCollected 表示数据来自真实采集。
 	SourceCollected = "collected"
-	// SourceSample 表示数据来自随包示例。
-	SourceSample = "sample"
 	// SourceEmpty 表示没有任何数据。
 	SourceEmpty = "empty"
 )
@@ -57,8 +52,8 @@ func (s *Store) Dir() string { return s.dir }
 
 // LoadJobs 读取岗位数据。
 //
-// 优先级：jobs.json（有内容则 source=collected）→ jobs.sample.json（source=sample）
-// → 都没有时返回 (nil, "empty", nil)。文件存在但 JSON 损坏时返回错误。
+// jobs.json 有内容 → source=collected；文件不存在或为空 → (nil, "empty", nil)，
+// 由前端展示空态。文件存在但 JSON 损坏时返回错误。
 func (s *Store) LoadJobs() ([]model.Job, string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -69,14 +64,6 @@ func (s *Store) LoadJobs() ([]model.Job, string, error) {
 	}
 	if ok {
 		return jobs, SourceCollected, nil
-	}
-
-	sample, ok, err := readJobsFile(s.samplePath())
-	if err != nil {
-		return nil, SourceEmpty, err
-	}
-	if ok {
-		return sample, SourceSample, nil
 	}
 	return nil, SourceEmpty, nil
 }
@@ -152,7 +139,6 @@ func (s *Store) LoadReport() (model.Report, bool) {
 // ---------- 内部实现 ----------
 
 func (s *Store) jobsPath() string   { return filepath.Join(s.dir, JobsFile) }
-func (s *Store) samplePath() string { return filepath.Join(s.dir, SampleFile) }
 func (s *Store) reportPath() string { return filepath.Join(s.dir, ReportFile) }
 
 // saveJobsLocked 写入岗位数据；空切片也写成 []，避免下游拿到 null。

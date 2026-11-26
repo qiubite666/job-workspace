@@ -233,11 +233,11 @@ func (a *Adapter) fail(code errs.Code, format string, args ...any) *errs.Platfor
 	return e
 }
 
-// checkCredentials 在 live 模式下校验登录态。
+// checkCredentials 校验登录态。
 //
 // 判定顺序：CLI 传入的 cookie → CookieEnv 指向的环境变量。
-// 两者都为空且处于 live 模式 → AUTH_REQUIRED，避免发一次注定失败的请求。
-// sample/local 模式不发起网络请求，直接放行。
+// v2 起采集只剩 live 一种模式，因此缺少登录态恒定报 AUTH_REQUIRED——
+// 与其发一次注定被风控的请求，不如在本地立刻失败并说清缺什么。
 func (a *Adapter) checkCredentials(p model.Params) error {
 	env := strings.TrimSpace(a.spec.CookieEnv)
 	if env == "" {
@@ -249,11 +249,7 @@ func (a *Adapter) checkCredentials(p model.Params) error {
 	if strings.TrimSpace(os.Getenv(env)) != "" {
 		return nil
 	}
-	// 只有显式声明 live 才拦截；mode 为空时调用方可能是在做本地映射测试。
-	if strings.ToLower(strings.TrimSpace(p.Mode)) != "live" {
-		return nil
-	}
-	return a.fail(errs.CodeAuthRequired, "缺少 %s，请通过 --cookie 或环境变量提供登录态", env)
+	return a.fail(errs.CodeAuthRequired, "缺少 %s，请通过 --cookie、--cookie-file 或环境变量提供登录态", env)
 }
 
 // checkBizCode 校验业务码，失败时返回 *errs.PlatformError。

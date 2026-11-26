@@ -148,7 +148,7 @@ func (c *Config) Platform(id string) *Platform {
 
 // Ordered 返回全部平台配置（含 disabled），按 Priority 升序、同优先级按 ID 字典序。
 //
-// 是否启用由调用方读 Enabled 判断；这里不做过���，避免 web 无法展示被禁用的平台。
+// 是否启用由调用方读 Enabled 判断；这里不做过滤，避免 web 无法展示被禁用的平台。
 func (c *Config) Ordered() []*Platform {
 	if c == nil || len(c.Platforms) == 0 {
 		return nil
