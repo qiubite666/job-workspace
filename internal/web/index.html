@@ -1579,10 +1579,22 @@ function metaHTML(job) {
   }).join("") + "</div>";
 }
 
+/* timeFallbackHTML 处理「平台没给发布时间」的情况。
+   BOSS 的列表接口多数条目不带发布时间，但会带招聘者活跃状态（如「刚刚活跃」）。
+   与其留一句「发布时间未提供」，不如把已有的活跃状态显示出来——语义不同，
+   所以文案明确写成「招聘者…」，不冒充发布时间。 */
+function timeFallbackHTML(job) {
+  var act = String(job.activeTimeDesc || "").trim();
+  if (act) {
+    return '<span class="job__time is-weak" title="平台未提供发布时间，这里显示招聘者最近活跃状态">招聘者' + esc(act) + "</span>";
+  }
+  return '<span class="job__time is-weak" title="平台未提供发布时间">发布时间未提供</span>';
+}
+
 function timeHTML(job) {
-  if (!job.publishedAt) return '<span class="job__time is-weak" title="平台未提供发布时间">发布时间未提供</span>';
+  if (!job.publishedAt) return timeFallbackHTML(job);
   var d = new Date(job.publishedAt);
-  if (isNaN(d.getTime())) return '<span class="job__time is-weak" title="平台未提供发布时间">发布时间未提供</span>';
+  if (isNaN(d.getTime())) return timeFallbackHTML(job);
   var diff = dayDiffYmd(ymd(d), todayStr());
   var label;
   if (diff <= 0) label = "今天发布";
