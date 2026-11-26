@@ -206,26 +206,67 @@ lastCity=101080100; ab_guid=...; wt2=...; zp_at=...; __zp_stoken__=...; bst=...;
 | GET | `/` | 公开 | 工作台页面 |
 | GET | `/admin` | 公开（页面内置登录框） | 后台管理页面 |
 | GET | `/api/health` | 公开 | 健康检查、岗位数、数据源 |
-| GET | `/api/jobs` | 公开 | 岗位列表 + 元信息（含最近一次采集报告） |
+| GET | `/api/jobs` | 登录 | 岗位列表 + 元信息（含最近一次采集报告） |
 | GET | `/api/platforms` | 公开 | 平台清单与城市码表 |
-| POST | `/api/collect` | 登录 | 触发采集（单飞锁，并发返回 409） |
+| GET | `/api/me/state` | 登录 | 当前账号的收藏 / 投递状态 / 备注 |
+| PUT | `/api/me/state` | 登录 | 覆盖保存上述数据（服务端归一化） |
+| POST | `/api/collect` | 登录 | 触发联网采集（单飞锁，并发返回 409） |
+| POST | `/api/ingest` | **令牌** | 浏览器扩展上报岗位（跨域，独立令牌） |
 | POST | `/api/auth/login` | 公开 | 登录，成功下发 `wb_sid` Cookie |
 | POST | `/api/auth/logout` | 公开 | 退出（幂等） |
 | GET | `/api/auth/me` | 公开 | 探测登录态，未登录返回 `authenticated:false` |
-| GET | `/api/admin/jobs` | 登录 | 后台岗位列表（含搜索） |
-| GET | `/api/admin/jobs/{id}` | 登录 | 单个岗位 |
-| POST | `/api/admin/jobs` | admin | 新增岗位（`platform=manual`） |
-| PUT | `/api/admin/jobs/{id}` | admin | 编辑岗位 |
-| DELETE | `/api/admin/jobs/{id}` | admin | 删除岗位 |
+| GET | `/api/admin/users` | admin | 账号列表 |
+| POST | `/api/admin/users` | admin | 新增账号（密码留空则生成 16 位随机密码） |
+| POST | `/api/admin/users/{username}/password` | admin | 修改指定账号的密码 |
 
 服务只监听 `127.0.0.1`，不对外暴露。
 
-**鉴权说明**：`v1.1.0` 起 `/api/collect` 需要登录——它会真实发起对外请求，公开暴露会牵连服务器 IP。
-其余只读接口保持公开，工作台前台使用不受影响。
+**鉴权说明**：岗位数据、采集、账号管理、「我的数据」均要求登录；`/api/health` 与 `/api/platforms`
+是静态信息保持公开。`/api/ingest` 走**独立令牌**（`data/ingest.token`，0600，首次启动自动生成），
+因为浏览器扩展运行在 `www.zhipin.com` 域下，拿不到本站 Cookie。
 
 ---
 
-## 8. 登录与后台管理（v1.1.0）
+## 8. 浏览器扩展上报（v3）
+
+CLI 采集需要你手工提供 cookie，而 BOSS 的登录态通常只撑几次请求就失效。
+扩展把「取数」放回浏览器：登录态、`__zp_stoken__` 都由页面自己维护，你不用碰 cookie 字符串。
+
+- 扩展在 `www.zhipin.com` 页面里**旁听**页面自身发出的搜索响应——不改写请求、不重发、**不读取也不上送 cookie**
+- 命中 `zpData.jobList` 后，把整段原始响应 POST 到 `/api/ingest`
+- 服务端复用与 CLI 完全相同的映射链路落库，两条入口产出的字段口径一致
+
+### 8.1 安装
+
+1. 打开 `chrome://extensions`（Edge 为 `edge://extensions`），右上角开启「开发者模式」
+2. 点「加载已解压的扩展程序」，选择仓库里的 `extension/` 目录
+3. 点扩展图标，填写两项配置：
+   - **服务地址**：`https://job.qiubite.fun`（本地调试填 `http://127.0.0.1:8787`）
+   - **上报令牌**：服务器上执行 `cat ~/service/job-workspace/data/ingest.token`
+4. 打开 BOSS 直聘的搜索页，正常翻页；扩展图标上的数字就是本次新增/更新的条数
+
+### 8.2 上报令牌
+
+首次启动服务时自动生成，落在 `<data>/ingest.token`（0600），**不写日志、不进接口响应**。
+
+- 与登录会话无关：扩展运行在 `www.zhipin.com` 域下，拿不到本站 Cookie，因此用独立令牌
+- 令牌走 `X-Ingest-Token` 请求头，不进 URL，避免被访问日志记录
+- 轮换：删掉该文件后重启服务即可重新生成，旧令牌立即失效
+
+### 8.3 与 CLI 采集的关系
+
+| | 扩展上报 | CLI `collect` |
+|---|---|---|
+| 登录态来源 | 浏览器自动携带 | 需提供 cookie（`--cookie-file`） |
+| 令牌续期 | 页面自动刷新 | 失效后需重新导出 |
+| robots 网关 | 不经过（由浏览器正常访问） | 默认拦截，需 `--allow-disallowed` |
+| 适用 | 日常增量、长期使用 | 批量拉取、无浏览器环境 |
+
+两者写入同一份 `data/jobs.json`，按岗位 ID 去重合并，可以混用。
+
+---
+
+## 9. 登录与后台管理
 
 ### 8.1 首次创建管理员
 
@@ -255,17 +296,21 @@ lastCity=101080100; ab_guid=...; wt2=...; zp_at=...; __zp_stoken__=...; bst=...;
 - **登录限流**：同一 `(客户端IP, 用户名)` 连续失败 5 次锁定 60 秒，返回 429。
 - **权限模型**：`admin` 可增删改；`viewer` 只读。写接口统一走 `requireRole(admin)`。
 
-### 8.3 后台能力
+### 9.3 后台能力（v3 起只做账号维护）
 
-- 岗位列表：分页、按职位/公司/城市搜索
-- 新增 / 编辑：服务端字段级校验（必填、长度、URL 协议），失败返回 422 + 字段错误映射
-- 删除：二次确认后不可撤销
-- 手工录入的岗位 `platform=manual`，与采集数据同表共存，不影响采集去重
-- 薪资原文由 `parser.ParseSalary` 解析成数值，与采集链路口径一致
+后台只保留两件事，岗位数据不再提供手工 CRUD——它由采集与扩展上报产生：
+
+| 功能 | 行为 |
+|---|---|
+| 新增账号 | 用户名 3~32 位（小写字母/数字/`._-`）、显示名、角色（admin/viewer）、初始密码；密码留空则由服务端生成 16 位随机密码并**只显示一次** |
+| 修改密码 | 在账号列表里对任一行操作；留空同样生成随机密码，最短 8 位 |
+
+新增成功后页面会用醒目的一次性提示框展示自动密码，并附「复制」按钮。
+删除/禁用账号仍通过命令行 `jobworkspace user delete` 完成，后台不提供（避免误删最后一个管理员）。
 
 ---
 
-## 9. 新增一个招聘平台（3 步）
+## 10. 新增一个招聘平台（3 步）
 
 1. 复制骨架：`cp -r internal/platform/template internal/platform/xyz`
 2. 在 `xyz` 包里实现 `New(p *config.Platform) platform.Adapter`，若接口与 `httpjson` 一致，
@@ -277,7 +322,7 @@ lastCity=101080100; ab_guid=...; wt2=...; zp_at=...; __zp_stoken__=...; bst=...;
 
 ---
 
-## 9. 边界条件与错误处理
+## 11. 边界条件与错误处理
 
 | 场景 | 行为 |
 |---|---|
@@ -295,7 +340,7 @@ lastCity=101080100; ab_guid=...; wt2=...; zp_at=...; __zp_stoken__=...; bst=...;
 
 ---
 
-## 10. Windows 使用
+## 12. Windows 使用
 
 从 [Releases](https://github.com/qiubite666/job-workspace/releases/latest) 下载
 `jobworkspace-windows-amd64.exe`，无需安装、无需 Go 环境。
@@ -323,7 +368,7 @@ cd D:\job-workspace
 
 ---
 
-## 11. 全站登录与数据云同步（v2）
+## 13. 全站登录与数据云同步（v2）
 
 - **整站登录**：首页与 `/admin` 共用同一会话。未登录时首页只显示登录卡片，
   不加载任何岗位数据；用 `admin` 登录后可直接在顶栏看到「管理后台」入口，无需二次登录。
@@ -338,7 +383,7 @@ cd D:\job-workspace
 
 ---
 
-## 12. 已知限制与命名债
+## 14. 已知限制与命名债
 
 - **命名债**：统一模型中的 `bossName` / `bossTitle` 语义是「招聘者姓名 / 招聘者职位」，
   沿用了 BOSS 直聘的字段词。这是本次统一建模时的历史命名，属于**平台词汇泄漏进核心模型**的瑕疵。
