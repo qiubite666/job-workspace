@@ -30,12 +30,10 @@ import (
 	"jobworkspace/internal/model"
 	"jobworkspace/internal/store"
 	"jobworkspace/internal/userdata"
+	jobversion "jobworkspace/internal/version"
 
 	"log/slog"
 )
-
-// version 是 /api/health 上报的服务版本号。
-const version = "1.0.0"
 
 // collectTimeout 是 /api/collect 触发子进程的硬超时。
 const collectTimeout = 120 * time.Second
@@ -232,11 +230,14 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"ok":        true,
-		"version":   version,
+		"version":   jobversion.Version,
 		"jobCount":  len(jobs),
 		"updatedAt": s.updatedAt(jobs),
 		"source":    source,
 		"platforms": s.platforms(false),
+		// 前端据此决定「采集」按钮是否可用：没有登录态时点了必然失败，
+		// 与其让用户等 120 秒拿到 AUTH_REQUIRED，不如直接说明原因。
+		"cookieConfigured": s.collectReady(),
 	})
 }
 
@@ -716,4 +717,25 @@ func firstErrorCode(r *model.Report) string {
 		}
 	}
 	return ""
+}
+
+// collectReady 判断服务端是否具备采集所需的登录态。
+//
+// 只看"配置了 cookie 文件且文件存在"或"cookie 环境变量非空"，
+// 不去校验内容是否过期——过期与否只有真正发请求才知道。
+func (s *Server) collectReady() bool {
+	if p := strings.TrimSpace(s.cookieFile); p != "" {
+		if _, err := os.Stat(p); err == nil {
+			return true
+		}
+	}
+	for _, p := range s.cfg.Platforms {
+		if p == nil {
+			continue
+		}
+		if env := strings.TrimSpace(p.CookieEnv); env != "" && strings.TrimSpace(os.Getenv(env)) != "" {
+			return true
+		}
+	}
+	return false
 }

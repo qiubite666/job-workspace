@@ -804,6 +804,8 @@ var source = "empty";
 var serverOnline = false;
 var lastUpdated = "";
 var platformCache = [];
+/* 服务端是否已配置采集登录态；默认 true，仅在健康检查明确告知未配置时才禁用。 */
+var collectReady = true;
 var visibleCount = PAGE_SIZE;
 
 /* 用户数据：与服务端 §2.1 形状一致 */
@@ -1146,7 +1148,7 @@ async function enterWorkspace(user) {
   save.status = "saving";
   refreshAll();
 
-  await Promise.all([loadJobsData(), loadPlatforms(), loadUserState()]);
+  await Promise.all([loadJobsData(), loadPlatforms(), loadUserState(), loadHealth()]);
   refreshAll();
 }
 
@@ -1181,6 +1183,18 @@ async function loadJobsData() {
   if (!jobs.length) {
     source = "empty";
     if (!serverOnline) lastUpdated = "";
+  }
+}
+
+/* loadHealth 只取 cookieConfigured：决定「采集」入口是否可用。 */
+async function loadHealth() {
+  var out = await api("/api/health", { handleUnauthorized: false });
+  if (out.ok && out.data && typeof out.data.cookieConfigured === "boolean") {
+    collectReady = out.data.cookieConfigured;
+  }
+  var btn = document.querySelector('[data-action="collect"]');
+  if (btn && !collectReady) {
+    btn.title = "服务器未配置 BOSS 登录态，请用浏览器扩展采集";
   }
 }
 
@@ -1834,6 +1848,17 @@ function openCollect() {
   if (status) { status.hidden = true; status.textContent = ""; status.classList.remove("is-error"); }
   var results = $("#collectResults");
   if (results) results.innerHTML = "";
+  var submit = $("#collectSubmit");
+  if (!collectReady) {
+    if (status) {
+      status.hidden = false;
+      status.classList.add("is-error");
+      status.textContent = "服务器未配置 BOSS 登录态，这里的采集会直接失败。请改用浏览器扩展采集（装好后在 BOSS 页面翻页即入库）。";
+    }
+    if (submit) { submit.disabled = true; submit.textContent = "需先用扩展采集"; }
+    return;
+  }
+  if (submit) { submit.disabled = false; submit.textContent = "开始采集"; }
   var q = $("#cQuery");
   if (q) window.setTimeout(function () { q.focus(); }, 30);
 }
