@@ -1,0 +1,60 @@
+{
+  "platform": "boss",
+  "query": "运维",
+  "city": "呼和浩特",
+  "raw": {
+    "code": 0,
+    "message": "Success",
+    "zpData": {
+      "hasMore": true,
+      "jobList": [
+        {
+          "encryptJobId": "ingest-demo-001",
+          "jobName": "运维工程师",
+          "brandName": "青城数据",
+          "brandIndustry": "云计算",
+          "brandScaleName": "100-499人",
+          "brandStageName": "B轮",
+          "cityName": "呼和浩特",
+          "areaDistrict": "赛罕区",
+          "businessDistrict": "万达广场",
+          "salaryDesc": "15-25K·13薪",
+          "jobExperience": "3-5年",
+          "jobDegree": "本科",
+          "jobLabels": ["3-5年", "本科"],
+          "skills": ["Linux", "Kubernetes", "Prometheus"],
+          "welfareList": ["五险一金", "年终奖"],
+          "bossName": "张工",
+          "bossTitle": "技术总监",
+          "bossActiveTimeDesc": "刚刚活跃"
+        },
+        {
+          "encryptJobId": "ingest-demo-002",
+          "jobName": "系统运维",
+          "brandName": "草原网络",
+          "cityName": "",
+          "areaDistrict": "回民区",
+          "businessDistrict": "中山西路",
+          "salaryDesc": "12-18K",
+          "jobExperience": "1-3年",
+          "jobDegree": "大专",
+          "skills": ["Shell", "Nginx"],
+          "bossName": "李工",
+          "bossTitle": "运维负责人"
+        },
+        {
+          "encryptJobId": "ingest-demo-003",
+          "jobName": "云平台运维",
+          "brandName": "北疆科技",
+          "areaDistrict": "新城区",
+          "salaryDesc": "18-30K·14薪",
+          "jobExperience": "5-10年",
+          "jobDegree": "本科",
+          "skills": ["Terraform", "Ansible"],
+          "bossName": "王工",
+          "bossTitle": "架构师"
+        }
+      ]
+    }
+  }
+}

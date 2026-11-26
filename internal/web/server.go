@@ -74,6 +74,10 @@ type Server struct {
 
 	// userState 存放每个账号的收藏 / 投递状态 / 备注，路径为 <data>/userstate。
 	userState *userdata.Store
+
+	// ingestToken 是浏览器扩展上报用的独立令牌（<data>/ingest.token）。
+	// 与登录会话无关：扩展不在本站域下，拿不到 Cookie。
+	ingestToken string
 }
 
 // SetCookieFile 设置采集子进程使用的 cookie 文件路径。
@@ -111,6 +115,14 @@ func New(cfg *config.Config, st *store.Store, log *slog.Logger) *Server {
 
 		// 每个账号的收藏 / 投递状态 / 备注，落在 <data>/userstate/<username>.json。
 		s.userState = userdata.NewStore(filepath.Join(st.Dir(), "userstate"))
+
+		// 扩展上报令牌：首次启动自动生成，之后复用；只写文件不写日志。
+		if tok, err := loadOrCreateIngestToken(st.Dir()); err != nil {
+			log.Error("初始化上报令牌失败，/api/ingest 将不可用", "err", err)
+		} else {
+			s.ingestToken = tok
+			log.Info("扩展上报接口已就绪", "path", ingestTokenPath(st.Dir()))
+		}
 	}
 
 	mux := http.NewServeMux()
@@ -125,6 +137,10 @@ func New(cfg *config.Config, st *store.Store, log *slog.Logger) *Server {
 	mux.HandleFunc("GET /api/jobs", s.requireAuth(s.handleJobs))
 	mux.HandleFunc("POST /api/collect", s.requireAuth(s.handleCollect))
 
+	// 扩展上报：独立令牌鉴权，供浏览器扩展跨域推送岗位数据。
+	mux.HandleFunc("POST /api/ingest", s.handleIngest)
+	mux.HandleFunc("OPTIONS /api/ingest", s.handleIngestPreflight)
+
 	// 当前登录用户自己的收藏 / 投递状态 / 备注，按账号隔离。
 	mux.HandleFunc("GET /api/me/state", s.requireAuth(s.handleGetMyState))
 	mux.HandleFunc("PUT /api/me/state", s.requireAuth(s.handlePutMyState))
@@ -134,12 +150,11 @@ func New(cfg *config.Config, st *store.Store, log *slog.Logger) *Server {
 	mux.HandleFunc("POST /api/auth/logout", s.handleLogout)
 	mux.HandleFunc("GET /api/auth/me", s.handleMe)
 
-	// 后台管理：读接口 viewer 亦可，写接口仅 admin。
-	mux.HandleFunc("GET /api/admin/jobs", s.requireAuth(s.handleAdminListJobs))
-	mux.HandleFunc("POST /api/admin/jobs", s.requireRole(auth.RoleAdmin, s.handleAdminCreateJob))
-	mux.HandleFunc("GET /api/admin/jobs/{id}", s.requireAuth(s.handleAdminGetJob))
-	mux.HandleFunc("PUT /api/admin/jobs/{id}", s.requireRole(auth.RoleAdmin, s.handleAdminUpdateJob))
-	mux.HandleFunc("DELETE /api/admin/jobs/{id}", s.requireRole(auth.RoleAdmin, s.handleAdminDeleteJob))
+	// 后台管理从 v3 起只保留账号维护：新增账号、修改密码。
+	// 岗位的增删改由采集与扩展上报承担，不再提供手工 CRUD 界面。
+	mux.HandleFunc("GET /api/admin/users", s.requireRole(auth.RoleAdmin, s.handleAdminListUsers))
+	mux.HandleFunc("POST /api/admin/users", s.requireRole(auth.RoleAdmin, s.handleAdminCreateUser))
+	mux.HandleFunc("POST /api/admin/users/{username}/password", s.requireRole(auth.RoleAdmin, s.handleAdminSetPassword))
 
 	s.handler = withLogging(log, mux)
 	return s
