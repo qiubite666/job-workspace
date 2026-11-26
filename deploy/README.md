@@ -127,12 +127,19 @@ systemctl daemon-reload && nginx -t && nginx -s reload
 ## 8. 安全须知
 
 - 服务只监听 `127.0.0.1:8787`，对外仅经 nginx。
-- 工作台**没有账号体系**，默认整站 Basic Auth。关闭鉴权等于把「岗位库 + 采集接口」公开，
-  其中 `/api/collect` 会真实发起对招聘平台的请求，被滥用会牵连服务器 IP。
-- 若只想自己用，更稳妥的做法是把 `auth_basic` 换成 IP 白名单：
+- **两层鉴权，职责不同**，建议都保留：
+  - **nginx Basic Auth**（本配置默认开启）：在网络层挡住未授权访问，连登录页都看不到；
+  - **应用内登录**（`/admin`，v1.1.0 起）：区分 `admin` / `viewer`，控制增删改权限。
+- 应用内没有账号体系时的暴露风险：`/api/collect` 会真实发起对招聘平台的请求，
+  被滥用会牵连服务器 IP。v1.1.0 起该接口已要求登录，但仍建议叠加 Basic Auth 或 IP 白名单。
+- 只想自己用时，把 `auth_basic` 两行换成 IP 白名单（仍只改本文件）：
   ```nginx
   allow 1.2.3.4;
   deny  all;
   ```
-  （替换掉 `auth_basic` 两行即可，仍只改本文件。）
+- 部署后先创建管理员，否则后台无法登录：
+  ```bash
+  sudo -u ops /home/ops/service/job-workspace/jobworkspace user add --username admin
+  ```
 - `BOSS_COOKIE` 属于账号凭证，放在 `env`（0600），不要写进单元文件或仓库。
+- `data/users.json` 含密码哈希（PBKDF2，不可逆），权限 0600；备份时按敏感文件处理。

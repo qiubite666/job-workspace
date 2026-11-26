@@ -12,6 +12,17 @@
 /data/jobs.json
 /data/collect.report.json
 
+# 后台账号文件：含密码哈希，属于敏感数据，任何情况下都不得入库
+/data/users.json
+/data/users.json.tmp
+**/users.json
+
+# 本地临时验证产物（截图、注入页、端到端测试目录）
+/shot-*.png
+/tmp-*.html
+/tmp-*.py
+/tmp-e2e/
+
 # 本地配置覆盖（可能含私有平台地址、cookie 环境变量名等）
 /config/
 *.local.json

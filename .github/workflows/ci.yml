@@ -1,0 +1,67 @@
+name: ci
+
+# 日常质量闸门：所有分支的 push 与 PR 都跑格式检查、静态检查、单测、构建。
+# 只做校验与产物留存，不发布 Release（发布由 release.yml 在 v* 标签上完成）。
+
+on:
+  push:
+    branches:
+      - "**"
+  pull_request:
+
+permissions:
+  contents: read
+
+# 同一分支有新提交时，取消上一次未跑完的任务
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache: false
+
+      - name: 格式检查（gofmt 必须为空）
+        run: |
+          set -euo pipefail
+          out="$(gofmt -l .)"
+          if [ -n "$out" ]; then
+            echo "以下文件未按 gofmt 格式化："
+            echo "$out"
+            echo "修复方式：gofmt -w ."
+            exit 1
+          fi
+          echo "gofmt 检查通过"
+
+      - name: 静态检查（go vet）
+        run: go vet ./...
+
+      - name: 单元测试（go test）
+        run: go test ./...
+
+      - name: 构建（本机）
+        run: go build ./...
+
+      - name: 交叉编译 linux/amd64
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+            go build -trimpath -ldflags "-s -w" -o dist/jobworkspace-linux-amd64 .
+          ls -l dist
+
+      - name: 上传构建产物（jobworkspace-ci）
+        uses: actions/upload-artifact@v4
+        with:
+          name: jobworkspace-ci
+          path: dist/jobworkspace-linux-amd64
+          if-no-files-found: error

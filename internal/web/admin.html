@@ -1,0 +1,1362 @@
+<!DOCTYPE html>
+<!-- 后台管理单页：CSS/JS/图标全部内联，零外链、零 emoji，复用前台的视觉令牌 -->
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light">
+<meta name="referrer" content="no-referrer">
+<title>后台管理 · 求职工作台</title>
+<style>
+:root{
+  --bg:#fbfbfd;
+  --card:#ffffff;
+  --text:#1d1d1f;
+  --muted:#6e6e73;
+  --faint:#86868b;
+  --line:rgba(0,0,0,.08);
+  --primary:#0071e3;
+  --danger:#d70015;
+  --ok:#1d7a4c;
+  --shadow:0 4px 20px rgba(0,0,0,.04);
+  --shadow-hover:0 10px 30px rgba(0,0,0,.08);
+  --ease:cubic-bezier(.4,0,.2,1);
+  --radius-card:18px;
+}
+*,*::before,*::after{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0;
+  background:var(--bg);
+  color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  font-size:16px;
+  line-height:1.47;
+  -webkit-font-smoothing:antialiased;
+  overflow-x:hidden;
+  padding-bottom:env(safe-area-inset-bottom);
+}
+h1,h2,h3,p{margin:0}
+button,input,select,textarea{font-family:inherit}
+svg{display:block}
+.i{fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;width:20px;height:20px;flex:none}
+:focus-visible{outline:2px solid var(--primary);outline-offset:2px;border-radius:6px}
+[hidden]{display:none !important}
+
+/* ---------- 按钮 ---------- */
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:7px;
+  min-height:44px;padding:0 18px;border-radius:980px;border:1px solid transparent;
+  background:transparent;color:var(--text);font-size:14px;font-weight:500;
+  cursor:pointer;transition:all .28s var(--ease);text-decoration:none;white-space:nowrap;
+}
+.btn .i{width:16px;height:16px}
+.btn--ghost{border-color:rgba(0,0,0,.12);background:rgba(255,255,255,.6)}
+.btn--ghost:hover{background:#fff;border-color:rgba(0,0,0,.18);box-shadow:var(--shadow)}
+.btn--primary{background:var(--primary);color:#fff}
+.btn--primary:hover{background:#0077ed;box-shadow:0 8px 22px rgba(0,113,227,.24)}
+.btn--danger{background:var(--danger);color:#fff}
+.btn--danger:hover{background:#c1000f;box-shadow:0 8px 22px rgba(215,0,21,.22)}
+.btn--quiet{color:var(--muted);padding:0 12px}
+.btn--quiet:hover{color:var(--text);background:rgba(0,0,0,.04)}
+.btn--block{width:100%}
+.btn:active{transform:scale(.98)}
+.btn[disabled]{opacity:.55;cursor:default;transform:none;box-shadow:none}
+
+/* ---------- 登录态 ---------- */
+.login{
+  min-height:100vh;min-height:100dvh;
+  display:flex;align-items:center;justify-content:center;
+  padding:32px 24px calc(32px + env(safe-area-inset-bottom));
+}
+.login__card{
+  width:100%;max-width:400px;background:var(--card);
+  border-radius:24px;box-shadow:0 20px 54px rgba(0,0,0,.08);
+  padding:34px 30px 30px;animation:rise .45s var(--ease) both;
+}
+.login__brand{display:flex;flex-direction:column;align-items:center;text-align:center;margin-bottom:26px}
+.login__mark{
+  width:52px;height:52px;border-radius:15px;background:var(--text);color:#fff;
+  display:flex;align-items:center;justify-content:center;margin-bottom:14px;
+}
+.login__mark .i{width:26px;height:26px;stroke-width:1.7}
+.login__title{font-size:24px;font-weight:600;letter-spacing:-.02em;line-height:1.25}
+.login__sub{font-size:13px;color:var(--muted);margin-top:4px;letter-spacing:.02em}
+
+/* ---------- 表单 ---------- */
+.form-row{display:flex;flex-direction:column;gap:6px;margin-bottom:14px;min-width:0}
+.form-row > .lbl{
+  font-size:12px;color:var(--muted);letter-spacing:.04em;
+  display:flex;align-items:center;gap:3px;
+}
+.req{color:var(--danger);font-style:normal;line-height:1}
+.form-row input{
+  height:44px;padding:0 12px;border-radius:12px;border:1px solid rgba(0,0,0,.12);
+  background:#fbfbfd;font-size:16px;color:var(--text);outline:none;
+  transition:all .28s var(--ease);width:100%;min-width:0;
+}
+.form-row input::placeholder{color:#a1a1a6}
+.form-row input:focus{border-color:var(--primary);background:#fff;box-shadow:0 0 0 3px rgba(0,113,227,.1)}
+.form-row input.is-invalid{border-color:var(--danger);background:rgba(215,0,21,.03)}
+.form-row input.is-invalid:focus{box-shadow:0 0 0 3px rgba(215,0,21,.1)}
+.field-err{color:var(--danger);font-size:12px;font-style:normal;line-height:1.5}
+.form-error{
+  margin:0 0 14px;padding:10px 12px;border-radius:10px;
+  background:rgba(215,0,21,.06);color:var(--danger);font-size:13px;line-height:1.5;
+}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 14px}
+.form-grid .span-2{grid-column:1/-1}
+
+/* ---------- 控制台头部 ---------- */
+.topbar{
+  position:sticky;top:0;z-index:40;
+  background:rgba(251,251,253,.72);
+  backdrop-filter:saturate(180%) blur(20px);
+  -webkit-backdrop-filter:saturate(180%) blur(20px);
+  border-bottom:1px solid rgba(0,0,0,.06);
+}
+.topbar__inner{
+  max-width:1120px;margin:0 auto;padding:10px 24px;
+  display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;
+}
+.brand{display:flex;align-items:center;gap:10px;min-width:0}
+.brand__mark{
+  width:30px;height:30px;border-radius:9px;background:var(--text);color:#fff;
+  display:flex;align-items:center;justify-content:center;flex:none;
+}
+.brand__mark .i{width:16px;height:16px;stroke-width:1.8}
+.brand__text{min-width:0}
+.brand__title{font-size:15px;font-weight:600;letter-spacing:-.01em;line-height:1.3}
+.brand__sub{font-size:11px;color:var(--muted);letter-spacing:.02em;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.actions .btn{font-size:13px;padding:0 14px}
+.badge{
+  display:inline-flex;align-items:center;gap:6px;min-height:32px;padding:0 12px;
+  border-radius:980px;background:rgba(0,0,0,.05);color:var(--muted);
+  font-size:11px;letter-spacing:.06em;text-transform:uppercase;
+}
+.badge::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor;opacity:.65}
+.badge--admin{color:var(--primary);background:rgba(0,113,227,.08)}
+.user{
+  font-size:13px;color:var(--muted);max-width:220px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.divider{width:1px;height:20px;background:var(--line);flex:none}
+
+/* ---------- 版心 ---------- */
+.wrap{max-width:1120px;margin:0 auto;padding:0 24px}
+
+/* ---------- 概览 ---------- */
+.stats{
+  margin-top:24px;background:var(--card);border-radius:var(--radius-card);
+  box-shadow:var(--shadow);padding:24px 28px;
+  display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px;
+}
+.stat{min-width:0}
+.stat + .stat{border-left:1px solid var(--line);padding-left:20px}
+.stat__num{font-size:28px;font-weight:600;letter-spacing:-.02em;font-variant-numeric:tabular-nums;line-height:1.2}
+.stat__label{font-size:12px;color:var(--muted);letter-spacing:.02em;margin-top:4px}
+
+/* ---------- 工具条 ---------- */
+.toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:22px 0 16px}
+.field{
+  display:inline-flex;align-items:center;gap:8px;height:44px;padding:0 12px;
+  border:1px solid rgba(0,0,0,.1);border-radius:12px;background:#fff;
+  transition:all .28s var(--ease);min-width:0;
+}
+.field:focus-within{border-color:var(--primary);box-shadow:0 0 0 3px rgba(0,113,227,.1)}
+.field--search{flex:1 1 280px;min-width:200px}
+.field > .i{width:17px;height:17px;color:var(--faint)}
+.field input{
+  border:0;background:transparent;outline:none;font-size:16px;color:var(--text);
+  min-width:0;width:100%;height:100%;padding:0;
+}
+.field input::placeholder{color:#a1a1a6}
+.field input[type=search]::-webkit-search-cancel-button{-webkit-appearance:none}
+.toolbar .btn{flex:none}
+
+/* ---------- 表格 ---------- */
+.card{background:var(--card);border-radius:var(--radius-card);box-shadow:var(--shadow);overflow:hidden}
+.table{width:100%}
+.thead,.row{
+  display:grid;
+  grid-template-columns:minmax(0,1.7fr) minmax(0,1.15fr) 78px 104px 132px 116px;
+  gap:14px;align-items:center;padding:14px 20px;
+}
+.thead{
+  font-size:12px;color:var(--muted);letter-spacing:.04em;
+  background:rgba(0,0,0,.015);border-bottom:1px solid var(--line);
+}
+.thead span:last-child{text-align:right}
+.row{border-bottom:1px solid var(--line);transition:background .2s var(--ease)}
+.row:last-child{border-bottom:0}
+.row:hover{background:rgba(0,0,0,.018)}
+.cell{min-width:0}
+.cell__k{display:none;font-size:11px;color:var(--faint);letter-spacing:.04em;margin-bottom:2px}
+.row__name{font-size:15px;font-weight:600;letter-spacing:-.01em;line-height:1.35;overflow-wrap:anywhere}
+.row__sub{font-size:12px;color:var(--faint);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cell__text{font-size:13px;color:var(--muted);overflow-wrap:anywhere}
+.cell__salary{font-size:14px;font-weight:600;color:var(--primary);font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+.cell__salary.is-unknown{color:var(--muted);font-weight:500;font-size:13px}
+.src{
+  display:inline-flex;align-items:center;max-width:100%;
+  font-size:12px;color:var(--muted);background:rgba(0,0,0,.05);
+  border-radius:980px;padding:3px 10px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.src--manual{background:rgba(0,113,227,.08);color:var(--primary)}
+.ops{display:flex;align-items:center;justify-content:flex-end;gap:2px}
+.linkbtn{
+  display:inline-flex;align-items:center;justify-content:center;
+  min-height:44px;padding:0 10px;border:0;border-radius:10px;
+  background:transparent;color:var(--primary);font-size:13px;font-weight:500;
+  cursor:pointer;transition:all .2s var(--ease);
+}
+.linkbtn:hover{background:rgba(0,113,227,.08)}
+.linkbtn--danger{color:var(--danger)}
+.linkbtn--danger:hover{background:rgba(215,0,21,.07)}
+
+/* ---------- 空态 ---------- */
+.empty{
+  display:flex;flex-direction:column;align-items:center;gap:10px;
+  padding:56px 24px;text-align:center;
+}
+.empty svg{width:88px;height:88px;color:#c7c7cc}
+.empty__title{font-size:16px;font-weight:600}
+.empty__hint{font-size:13px;color:var(--muted);max-width:26em}
+.empty .btn{margin-top:6px}
+
+/* ---------- 分页 ---------- */
+.pager{
+  display:flex;align-items:center;justify-content:center;gap:14px;
+  padding:22px 0 calc(8px + env(safe-area-inset-bottom));flex-wrap:wrap;
+}
+.pager__info{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums;letter-spacing:.01em}
+
+/* ---------- 浮层 ---------- */
+.overlay{
+  position:fixed;inset:0;z-index:60;
+  background:rgba(0,0,0,.28);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
+  padding:24px;overflow-y:auto;
+  display:flex;align-items:center;justify-content:center;
+}
+.panel{
+  width:100%;max-width:640px;margin:auto;background:var(--card);
+  border-radius:20px;box-shadow:0 24px 60px rgba(0,0,0,.18);
+  padding:26px 28px;animation:rise .3s var(--ease) both;
+}
+.panel--sm{max-width:420px}
+.panel__head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:6px}
+.panel__title{font-size:20px;font-weight:600;letter-spacing:-.01em}
+.panel__desc{font-size:13px;color:var(--muted);margin-bottom:18px;line-height:1.6;overflow-wrap:anywhere}
+.panel__foot{display:flex;justify-content:flex-end;gap:10px;margin-top:10px;flex-wrap:wrap}
+.icon-btn{
+  width:44px;height:44px;display:inline-flex;align-items:center;justify-content:center;
+  border:0;border-radius:980px;background:transparent;color:#b0b0b5;cursor:pointer;
+  transition:all .28s var(--ease);flex:none;
+}
+.icon-btn .i{width:18px;height:18px}
+.icon-btn:hover{background:rgba(0,0,0,.04);color:var(--muted)}
+.icon-btn[disabled]{opacity:.45;cursor:default;background:transparent}
+
+/* ---------- Toast ---------- */
+#toast{
+  position:fixed;top:calc(16px + env(safe-area-inset-top));right:16px;z-index:80;
+  max-width:min(360px,calc(100vw - 32px));
+  padding:12px 18px;border-radius:14px;
+  background:rgba(29,29,31,.94);color:#fff;font-size:13px;line-height:1.5;
+  box-shadow:0 12px 30px rgba(0,0,0,.18);
+  opacity:0;transform:translateY(-8px);pointer-events:none;
+  transition:all .28s var(--ease);
+}
+#toast.is-on{opacity:1;transform:none}
+#toast.is-success{background:rgba(29,122,76,.96)}
+#toast.is-error{background:rgba(215,0,21,.95)}
+
+@keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+
+/* ---------- 响应式 ---------- */
+@media (min-width:1200px){
+  .wrap{max-width:1180px}
+  .topbar__inner{max-width:1180px}
+}
+@media (max-width:1023px){
+  .thead,.row{
+    grid-template-columns:minmax(0,1.5fr) minmax(0,1fr) 64px 92px 112px 108px;
+    gap:10px;padding:12px 16px;
+  }
+  .cell__salary{font-size:13px}
+  .linkbtn{padding:0 8px}
+}
+@media (max-width:767px){
+  .wrap{padding:0 16px}
+  .topbar__inner{padding:10px 16px;gap:10px}
+  .actions{width:100%;justify-content:flex-start;gap:6px}
+  .actions .user{flex:1 1 auto;min-width:0;max-width:none;text-align:right;font-size:12px}
+  .actions .divider{display:none}
+  .actions .badge{min-height:28px;padding:0 9px;font-size:10px;letter-spacing:.02em}
+  .actions .btn{padding:0 11px;font-size:12px;gap:4px}
+  .actions .btn .i{width:14px;height:14px}
+  .login{padding:24px 16px calc(24px + env(safe-area-inset-bottom))}
+  .login__card{padding:28px 22px 24px;border-radius:20px}
+  .login__title{font-size:22px}
+  .stats{grid-template-columns:1fr 1fr;padding:20px;gap:16px;margin-top:18px}
+  .stat + .stat{padding-left:0;border-left:0}
+  .stat:nth-child(2){border-left:1px solid var(--line);padding-left:16px}
+  .stat:nth-child(3){
+    grid-column:1/-1;border-top:1px solid var(--line);
+    padding-top:14px;padding-left:0;border-left:0;
+  }
+  .stat__num{font-size:24px}
+  .toolbar{margin:18px 0 14px}
+  .field--search{flex:1 1 100%}
+  .toolbar .btn{width:100%}
+  .card{background:transparent;box-shadow:none;border-radius:0;overflow:visible}
+  .thead{display:none}
+  .row{
+    display:block;background:var(--card);border-radius:14px;box-shadow:var(--shadow);
+    border-bottom:0;padding:16px 18px;margin-bottom:10px;
+  }
+  .row:last-child{margin-bottom:0}
+  .cell{margin-bottom:10px}
+  .cell:last-child{margin-bottom:0}
+  .cell__k{display:block}
+  .row__sub{white-space:normal}
+  .ops{justify-content:flex-start;gap:6px}
+  .linkbtn{padding:0 12px;background:rgba(0,0,0,.04)}
+  .linkbtn--danger{background:rgba(215,0,21,.06)}
+  .overlay{padding:16px;align-items:flex-start}
+  .panel{padding:22px 20px;border-radius:18px}
+  .form-grid{grid-template-columns:1fr}
+  .panel__foot .btn{flex:1 1 auto}
+  .pager{gap:10px;padding:18px 0 calc(12px + env(safe-area-inset-bottom))}
+  .pager .btn{padding:0 14px;font-size:13px}
+}
+
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{
+    animation-duration:.001ms !important;
+    animation-delay:0ms !important;
+    transition-duration:.001ms !important;
+    scroll-behavior:auto !important;
+  }
+}
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <symbol id="i-logo" viewBox="0 0 24 24"><path d="M4 8.5 12 4l8 4.5v9L12 22l-8-4.5z"/><path d="M8 11.5h8M8 15.5h5"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><path d="M10.5 17.5a7 7 0 1 1 0-14 7 7 0 0 1 0 14Z"/><path d="m15.9 15.9 4.1 4.1"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M5 7h14"/><path d="M9.5 7V5h5v2"/><path d="m7 7 1 12h8l1-12"/></symbol>
+  <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 3.8 21 20H3z"/><path d="M12 9.5v4"/><circle cx="12" cy="16.6" r=".9"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7"/></symbol>
+  <symbol id="i-logout" viewBox="0 0 24 24"><path d="M14 5H7a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h7"/><path d="M17 8.5 20.5 12 17 15.5"/><path d="M10 12h10"/></symbol>
+  <symbol id="i-back" viewBox="0 0 24 24"><path d="M19 12H5"/><path d="m10 7-5 5 5 5"/></symbol>
+</svg>
+
+<!-- ==================== 未登录：登录卡片 ==================== -->
+<main class="login" id="loginView" hidden>
+  <div class="login__card">
+    <div class="login__brand">
+      <span class="login__mark"><svg class="i" aria-hidden="true"><use href="#i-logo"></use></svg></span>
+      <h1 class="login__title">后台管理</h1>
+      <p class="login__sub">求职工作台</p>
+    </div>
+    <form id="loginForm" autocomplete="on" novalidate>
+      <label class="form-row">
+        <span class="lbl">用户名</span>
+        <input id="loginUser" type="text" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="请输入用户名" required>
+      </label>
+      <label class="form-row">
+        <span class="lbl">密码</span>
+        <input id="loginPass" type="password" name="password" autocomplete="current-password" placeholder="请输入密码" required>
+      </label>
+      <p class="form-error" id="loginError" role="alert" hidden></p>
+      <button class="btn btn--primary btn--block" id="loginSubmit" type="submit">登录</button>
+    </form>
+  </div>
+</main>
+
+<!-- ==================== 已登录：管理控制台 ==================== -->
+<div id="consoleView" hidden>
+  <header class="topbar">
+    <div class="topbar__inner">
+      <div class="brand">
+        <span class="brand__mark"><svg class="i" aria-hidden="true"><use href="#i-logo"></use></svg></span>
+        <div class="brand__text">
+          <div class="brand__title">后台管理</div>
+          <div class="brand__sub">求职工作台</div>
+        </div>
+      </div>
+      <div class="actions">
+        <span class="badge" id="roleBadge">只读</span>
+        <span class="user" id="userName"></span>
+        <span class="divider" aria-hidden="true"></span>
+        <a class="btn btn--ghost" href="/">
+          <svg class="i" aria-hidden="true"><use href="#i-back"></use></svg>返回前台
+        </a>
+        <button class="btn btn--quiet" type="button" data-action="logout">
+          <svg class="i" aria-hidden="true"><use href="#i-logout"></use></svg>退出
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="stats" aria-label="岗位概览">
+      <div class="stat">
+        <div class="stat__num" id="statTotal">0</div>
+        <div class="stat__label">岗位总数</div>
+      </div>
+      <div class="stat">
+        <div class="stat__num" id="statManual">0</div>
+        <div class="stat__label">手动录入数</div>
+      </div>
+      <div class="stat">
+        <div class="stat__num" id="statCollected">0</div>
+        <div class="stat__label">采集来源数</div>
+      </div>
+    </section>
+
+    <div class="toolbar">
+      <label class="field field--search">
+        <svg class="i" aria-hidden="true"><use href="#i-search"></use></svg>
+        <input id="q" type="search" placeholder="搜索职位、公司、城市" autocomplete="off" aria-label="搜索职位、公司、城市">
+      </label>
+      <button class="btn btn--primary" type="button" data-action="add" id="addBtn">
+        <svg class="i" aria-hidden="true"><use href="#i-plus"></use></svg>新增岗位
+      </button>
+    </div>
+
+    <section class="card">
+      <div class="table" role="table" aria-label="岗位列表">
+        <div class="thead" role="row">
+          <span role="columnheader">职位</span>
+          <span role="columnheader">公司</span>
+          <span role="columnheader">城市</span>
+          <span role="columnheader">薪资</span>
+          <span role="columnheader">来源</span>
+          <span role="columnheader">操作</span>
+        </div>
+        <div id="jobRows" role="rowgroup" aria-live="polite"></div>
+      </div>
+      <div class="empty" id="emptyState" hidden>
+        <svg viewBox="0 0 96 96" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="20" y="16" width="56" height="64" rx="8"/>
+          <path d="M32 34h32M32 46h24M32 58h16"/>
+          <circle cx="66" cy="62" r="12"/>
+          <path d="m75 71 8 8"/>
+        </svg>
+        <div class="empty__title" id="emptyTitle">还没有岗位</div>
+        <div class="empty__hint" id="emptyHint">手动录入第一条岗位，或返回前台采集</div>
+        <button class="btn btn--primary" type="button" data-action="add" id="emptyAdd">新增第一条</button>
+      </div>
+    </section>
+
+    <div class="pager" id="pager"></div>
+  </main>
+</div>
+
+<!-- ==================== 新增 / 编辑浮层 ==================== -->
+<div class="overlay" id="jobModal" role="dialog" aria-modal="true" aria-labelledby="jobModalTitle" hidden>
+  <div class="panel">
+    <div class="panel__head">
+      <h2 class="panel__title" id="jobModalTitle">新增岗位</h2>
+      <button class="icon-btn" type="button" id="jobClose" data-action="close-job" aria-label="关闭">
+        <svg class="i" aria-hidden="true"><use href="#i-close"></use></svg>
+      </button>
+    </div>
+    <p class="panel__desc">必填项已标星；多个技能、标签、福利用英文逗号分隔。</p>
+    <form id="jobForm" autocomplete="off" novalidate>
+      <div class="form-grid">
+        <label class="form-row">
+          <span class="lbl">职位名称<i class="req" aria-hidden="true">*</i></span>
+          <input id="f-jobName" type="text" maxlength="80" placeholder="例如 Java开发工程师">
+          <em class="field-err" id="err-jobName" hidden></em>
+        </label>
+        <label class="form-row">
+          <span class="lbl">公司名称<i class="req" aria-hidden="true">*</i></span>
+          <input id="f-brandName" type="text" maxlength="80" placeholder="例如 某科技有限公司">
+          <em class="field-err" id="err-brandName" hidden></em>
+        </label>
+        <label class="form-row">
+          <span class="lbl">城市<i class="req" aria-hidden="true">*</i></span>
+          <input id="f-cityName" type="text" maxlength="40" placeholder="例如 北京">
+          <em class="field-err" id="err-cityName" hidden></em>
+        </label>
+        <label class="form-row">
+          <span class="lbl">行政区</span>
+          <input id="f-areaDistrict" type="text" maxlength="40" placeholder="例如 海淀区">
+          <em class="field-err" id="err-areaDistrict" hidden></em>
+        </label>
+        <label class="form-row">
+          <span class="lbl">商圈</span>
+          <input id="f-businessDistrict" type="text" maxlength="40" placeholder="例如 中关村">
+          <em class="field-err" id="err-businessDistrict" hidden></em>
+        </label>
+        <label class="form-row">
+          <span class="lbl">薪资原文</span>
+          <input id="f-salaryDesc" type="text" maxlength="40" placeholder="例如 20-35K·14薪">
+          <em class="field-err" id="err-salaryDesc" hidden></em>
+        </label>
+        <label class="form-row">
+          <span class="lbl">经验</span>
+          <input id="f-experience" type="text" maxlength="20" placeholder="例如 3-5年">
+          <em class="field-err" id="err-experience" hidden></em>
+        </label>
+        <label class="form-row">
+          <span class="lbl">学历</span>
+          <input id="f-degree" type="text" maxlength="20" placeholder="例如 本科">
+          <em class="field-err" id="err-degree" hidden></em>
+        </label>
+        <label class="form-row span-2">
+          <span class="lbl">技能（逗号分隔）</span>
+          <input id="f-skills" type="text" placeholder="例如 Java, Spring Boot, MySQL">
+          <em class="field-err" id="err-skills" hidden></em>
+        </label>
+        <label class="form-row">
+          <span class="lbl">标签（逗号分隔）</span>
+          <input id="f-jobLabels" type="text" placeholder="例如 后端, 高并发">
+          <em class="field-err" id="err-jobLabels" hidden></em>
+        </label>
+        <label class="form-row">
+          <span class="lbl">福利（逗号分隔）</span>
+          <input id="f-welfareList" type="text" placeholder="例如 五险一金, 年终奖">
+          <em class="field-err" id="err-welfareList" hidden></em>
+        </label>
+        <label class="form-row span-2">
+          <span class="lbl">职位链接</span>
+          <input id="f-jobUrl" type="url" maxlength="500" placeholder="https://">
+          <em class="field-err" id="err-jobUrl" hidden></em>
+        </label>
+        <label class="form-row">
+          <span class="lbl">发布时间</span>
+          <input id="f-publishedAt" type="date">
+          <em class="field-err" id="err-publishedAt" hidden></em>
+        </label>
+      </div>
+      <div class="panel__foot">
+        <button class="btn btn--ghost" type="button" id="jobCancel" data-action="close-job">取消</button>
+        <button class="btn btn--primary" type="submit" id="saveBtn">保存</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ==================== 删除确认浮层 ==================== -->
+<div class="overlay" id="delModal" role="dialog" aria-modal="true" aria-labelledby="delTitle" hidden>
+  <div class="panel panel--sm">
+    <div class="panel__head">
+      <h2 class="panel__title" id="delTitle">删除岗位</h2>
+      <button class="icon-btn" type="button" data-action="cancel-delete" aria-label="关闭">
+        <svg class="i" aria-hidden="true"><use href="#i-close"></use></svg>
+      </button>
+    </div>
+    <p class="panel__desc">确定删除「<span id="delName"></span>」？此操作不可撤销。</p>
+    <div class="panel__foot">
+      <button class="btn btn--ghost" type="button" id="delCancel" data-action="cancel-delete">取消</button>
+      <button class="btn btn--danger" type="button" id="delConfirm" data-action="confirm-delete">确定删除</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script>
+"use strict";
+
+/* =========================================================
+   常量
+   ========================================================= */
+var PAGE_SIZE = 10;
+var ROLE_LABELS = { admin: "管理员", viewer: "只读" };
+var FIELD_KEYS = [
+  "jobName", "brandName", "cityName", "areaDistrict", "businessDistrict",
+  "salaryDesc", "experience", "degree", "skills", "jobLabels",
+  "welfareList", "jobUrl", "publishedAt"
+];
+var REQUIRED_KEYS = ["jobName", "brandName", "cityName"];
+var MAX_LEN = {
+  jobName: 80, brandName: 80, cityName: 40, areaDistrict: 40,
+  businessDistrict: 40, salaryDesc: 40, experience: 20, degree: 20, jobUrl: 500
+};
+
+/* 数据层全局状态 */
+var state = {
+  user: null,   /* {username, displayName, role} */
+  jobs: [],
+  keyword: "",
+  page: 1,
+  loaded: false
+};
+
+/* 交互层全局状态 */
+var ui = {
+  loginBusy: false,
+  loginError: "",
+  jobOpen: false,
+  editId: null,
+  saving: false,
+  deleteId: null,
+  deleting: false,
+  errors: {}
+};
+
+/* =========================================================
+   工具
+   ========================================================= */
+function $(sel) { return document.querySelector(sel); }
+
+function esc(value) {
+  if (value === null || value === undefined) return "";
+  return String(value).replace(/[&<>"']/g, function (ch) {
+    switch (ch) {
+      case "&": return "&amp;";
+      case "<": return "&lt;";
+      case ">": return "&gt;";
+      case '"': return "&quot;";
+      default: return "&#39;";
+    }
+  });
+}
+
+function setText(sel, text) {
+  var el = $(sel);
+  if (el) el.textContent = text === null || text === undefined ? "" : String(text);
+}
+
+function showToast(message, kind) {
+  var el = $("#toast");
+  if (!el) return;
+  el.textContent = message;
+  el.className = "is-on" + (kind === "error" ? " is-error" : (kind === "ok" ? " is-success" : ""));
+  window.clearTimeout(showToast._timer);
+  showToast._timer = window.setTimeout(function () { el.className = ""; }, 2800);
+}
+
+function canWrite() {
+  return !!state.user && state.user.role === "admin";
+}
+
+function normalizeUser(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  var role = raw.role === "admin" ? "admin" : "viewer";
+  return {
+    username: String(raw.username || ""),
+    displayName: String(raw.displayName || ""),
+    role: role
+  };
+}
+
+/* =========================================================
+   数据层：HTTP
+   ========================================================= */
+async function api(path, options) {
+  var opts = options || {};
+  var init = {
+    method: opts.method || "GET",
+    credentials: "same-origin",
+    headers: { "Accept": "application/json" }
+  };
+  if (opts.body !== undefined) {
+    init.headers["Content-Type"] = "application/json";
+    init.body = JSON.stringify(opts.body);
+  }
+  var res = await fetch(path, init);
+  var data = null;
+  try { data = await res.json(); } catch (err) { data = null; }
+  if (res.status === 401 && opts.handleUnauthorized !== false) expireSession();
+  return { status: res.status, ok: res.ok, data: data };
+}
+
+/* 会话失效：清空视图，切回登录态 */
+function expireSession() {
+  var wasLogged = !!state.user;
+  state.user = null;
+  state.jobs = [];
+  state.keyword = "";
+  state.page = 1;
+  state.loaded = false;
+  ui.jobOpen = false;
+  ui.editId = null;
+  ui.saving = false;
+  ui.deleteId = null;
+  ui.deleting = false;
+  ui.errors = {};
+  ui.loginError = "";
+  if (wasLogged) showToast("登录已失效，请重新登录", "error");
+  refreshAll();
+}
+
+async function loadSession() {
+  try {
+    var out = await api("/api/auth/me", { handleUnauthorized: false });
+    if (!out.ok || !out.data || out.data.authenticated !== true) return;
+    var user = normalizeUser(out.data.user);
+    if (!user) return;
+    state.user = user;
+    await loadJobs();
+  } catch (err) {
+    ui.loginError = "网络异常，请重试";
+  }
+}
+
+async function loadJobs() {
+  try {
+    var out = await api("/api/admin/jobs");
+    if (!out.ok || !out.data || out.data.ok !== true) {
+      if (out.status !== 401) showToast("加载岗位失败，请重试", "error");
+      return;
+    }
+    var list = out.data.jobs;
+    if (!Array.isArray(list) && Array.isArray(out.data.items)) list = out.data.items;
+    state.jobs = Array.isArray(list) ? list.filter(isJobLike) : [];
+    state.loaded = true;
+  } catch (err) {
+    showToast("加载岗位失败，请重试", "error");
+  }
+}
+
+function isJobLike(item) {
+  return !!item && typeof item === "object" && typeof item.id === "string" && item.id !== "";
+}
+
+async function doLogin(event) {
+  event.preventDefault();
+  if (ui.loginBusy) return;
+  var username = String($("#loginUser").value || "").trim();
+  var password = String($("#loginPass").value || "");
+  if (!username || !password) {
+    ui.loginError = "请输入用户名和密码";
+    renderShell();
+    return;
+  }
+  ui.loginBusy = true;
+  ui.loginError = "";
+  renderShell();
+  try {
+    var out = await api("/api/auth/login", {
+      method: "POST",
+      body: { username: username, password: password },
+      handleUnauthorized: false
+    });
+    if (out.status === 429) {
+      ui.loginError = "尝试过于频繁，请 60 秒后再试";
+      return;
+    }
+    if (out.status === 401) {
+      ui.loginError = "用户名或密码不正确";
+      return;
+    }
+    if (!out.ok || !out.data || out.data.ok !== true) {
+      ui.loginError = "登录失败，请稍后重试";
+      return;
+    }
+    var user = normalizeUser(out.data.user);
+    if (!user) {
+      ui.loginError = "登录失败，请稍后重试";
+      return;
+    }
+    state.user = user;
+    state.loaded = false;
+    $("#loginPass").value = "";
+    await loadJobs();
+  } catch (err) {
+    ui.loginError = "网络异常，请重试";
+  } finally {
+    ui.loginBusy = false;
+    refreshAll();
+  }
+}
+
+async function doLogout() {
+  try { await api("/api/auth/logout", { method: "POST", body: {} }); } catch (err) { /* 忽略网络错误，本地照常退出 */ }
+  state.user = null;
+  state.jobs = [];
+  state.keyword = "";
+  state.page = 1;
+  state.loaded = false;
+  ui.loginError = "";
+  ui.jobOpen = false;
+  ui.editId = null;
+  ui.deleteId = null;
+  ui.errors = {};
+  $("#loginPass").value = "";
+  $("#loginUser").value = "";
+  refreshAll();
+  showToast("已退出登录", "ok");
+}
+
+/* =========================================================
+   计算层
+   ========================================================= */
+function computeStats() {
+  var total = state.jobs.length;
+  var manual = 0;
+  state.jobs.forEach(function (job) {
+    if (job && job.platform === "manual") manual += 1;
+  });
+  return { total: total, manual: manual, collected: total - manual };
+}
+
+function filteredJobs() {
+  var keyword = String(state.keyword || "").trim().toLowerCase();
+  if (!keyword) return state.jobs.slice();
+  return state.jobs.filter(function (job) {
+    var hay = [job.jobName, job.brandName, job.cityName, job.areaDistrict, job.businessDistrict, job.platformName]
+      .join(" ").toLowerCase();
+    return hay.indexOf(keyword) >= 0;
+  });
+}
+
+function pageCount() {
+  return Math.max(1, Math.ceil(filteredJobs().length / PAGE_SIZE));
+}
+
+function clampPage() {
+  var pages = pageCount();
+  var page = Math.floor(Number(state.page) || 1);
+  if (page < 1) page = 1;
+  if (page > pages) page = pages;
+  state.page = page;
+  return page;
+}
+
+function pageJobs() {
+  var page = clampPage();
+  var list = filteredJobs();
+  return list.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+}
+
+function findJob(id) {
+  if (!id) return null;
+  for (var i = 0; i < state.jobs.length; i++) {
+    if (state.jobs[i] && state.jobs[i].id === id) return state.jobs[i];
+  }
+  return null;
+}
+
+function fieldValue(job, key) {
+  if (!job) return "";
+  if (key === "skills" || key === "jobLabels" || key === "welfareList") {
+    var arr = job[key];
+    if (Array.isArray(arr)) return arr.join(", ");
+    return typeof arr === "string" ? arr : "";
+  }
+  if (key === "publishedAt") {
+    var text = String(job.publishedAt || "");
+    return /^\d{4}-\d{2}-\d{2}/.test(text) ? text.slice(0, 10) : "";
+  }
+  var value = job[key];
+  return value === null || value === undefined ? "" : String(value);
+}
+
+function splitList(text) {
+  return String(text || "").split(/[,，]/).map(function (part) {
+    return part.trim();
+  }).filter(function (part) { return part !== ""; });
+}
+
+function validate(values) {
+  var errors = {};
+  REQUIRED_KEYS.forEach(function (key) {
+    if (!String(values[key] || "")) errors[key] = "不能为空";
+  });
+  Object.keys(MAX_LEN).forEach(function (key) {
+    var value = String(values[key] || "");
+    if (!value || errors[key]) return;
+    if (value.length > MAX_LEN[key]) errors[key] = "不能超过 " + MAX_LEN[key] + " 个字符";
+  });
+  if (values.jobUrl && !errors.jobUrl && !/^https?:\/\//i.test(values.jobUrl)) {
+    errors.jobUrl = "链接必须以 http:// 或 https:// 开头";
+  }
+  ["skills", "jobLabels", "welfareList"].forEach(function (key) {
+    if (errors[key]) return;
+    var items = splitList(values[key]);
+    if (items.length > 10) { errors[key] = "最多 10 项"; return; }
+    for (var i = 0; i < items.length; i++) {
+      if (items[i].length > 20) { errors[key] = "每项不超过 20 个字符"; return; }
+    }
+  });
+  return errors;
+}
+
+function normalizeServerFields(fields) {
+  var out = {};
+  if (!fields || typeof fields !== "object") return out;
+  FIELD_KEYS.forEach(function (key) {
+    var msg = fields[key];
+    if (typeof msg === "string" && msg) out[key] = msg;
+  });
+  return out;
+}
+
+/* =========================================================
+   渲染层：函数之间互不调用，统一由 refreshAll() 驱动
+   ========================================================= */
+function renderShell() {
+  var logged = !!state.user;
+  var loginView = $("#loginView");
+  var consoleView = $("#consoleView");
+  if (loginView) loginView.hidden = logged;
+  if (consoleView) consoleView.hidden = !logged;
+
+  var submit = $("#loginSubmit");
+  if (submit) {
+    submit.disabled = !!ui.loginBusy;
+    submit.textContent = ui.loginBusy ? "登录中…" : "登录";
+  }
+  var err = $("#loginError");
+  if (err) {
+    err.textContent = ui.loginError || "";
+    err.hidden = !ui.loginError;
+  }
+
+  if (!logged) {
+    var q = $("#q");
+    if (q) q.value = "";
+    return;
+  }
+
+  var label = state.user.displayName
+    ? state.user.displayName + " · " + state.user.username
+    : state.user.username;
+  setText("#userName", label);
+  var badge = $("#roleBadge");
+  if (badge) {
+    var isAdmin = state.user.role === "admin";
+    badge.textContent = ROLE_LABELS[state.user.role] || ROLE_LABELS.viewer;
+    badge.className = "badge" + (isAdmin ? " badge--admin" : "");
+  }
+}
+
+function renderStats() {
+  var stats = computeStats();
+  setText("#statTotal", stats.total);
+  setText("#statManual", stats.manual);
+  setText("#statCollected", stats.collected);
+}
+
+function renderTable() {
+  var body = $("#jobRows");
+  if (!body) return;
+  var empty = $("#emptyState");
+  var list = pageJobs();
+
+  if (!list.length) {
+    body.innerHTML = "";
+    if (empty) empty.hidden = false;
+    var title = $("#emptyTitle");
+    var hint = $("#emptyHint");
+    var addBtn = $("#emptyAdd");
+    if (!state.loaded) {
+      setText("#emptyTitle", "正在加载");
+      setText("#emptyHint", "正在读取岗位数据…");
+      if (addBtn) addBtn.hidden = true;
+    } else if (!state.jobs.length) {
+      setText("#emptyTitle", "还没有岗位");
+      setText("#emptyHint", "手动录入第一条岗位，或返回前台采集");
+      if (addBtn) { addBtn.hidden = false; addBtn.textContent = "新增第一条"; }
+    } else {
+      setText("#emptyTitle", "没有匹配的岗位");
+      setText("#emptyHint", "换个关键词试试，或清空搜索框");
+      if (addBtn) { addBtn.hidden = false; addBtn.textContent = "新增岗位"; }
+    }
+    if (title) title.hidden = false;
+    if (hint) hint.hidden = false;
+    return;
+  }
+
+  if (empty) empty.hidden = true;
+  body.innerHTML = list.map(rowHTML).join("");
+}
+
+function rowHTML(job) {
+  var id = job.id || "";
+  var platform = String(job.platform || "");
+  var isManual = platform === "manual";
+  var sourceText = isManual ? "手动录入" : ("采集 · " + (job.platformName || platform || "未知平台"));
+  var salary = job.salaryText || job.salaryDesc || "";
+  var sub = [];
+  if (job.experience) sub.push(job.experience);
+  if (job.degree) sub.push(job.degree);
+  var name = job.jobName || "未命名职位";
+
+  return '<div class="row" role="row" data-id="' + esc(id) + '">'
+    + '<div class="cell cell--job" role="cell">'
+    + '<div class="cell__k">职位</div>'
+    + '<div class="row__name">' + esc(name) + "</div>"
+    + (sub.length ? '<div class="row__sub">' + esc(sub.join(" · ")) + "</div>" : "")
+    + "</div>"
+    + '<div class="cell" role="cell"><div class="cell__k">公司</div>'
+    + '<div class="cell__text">' + esc(job.brandName || "—") + "</div></div>"
+    + '<div class="cell" role="cell"><div class="cell__k">城市</div>'
+    + '<div class="cell__text">' + esc(job.cityName || "—") + "</div></div>"
+    + '<div class="cell" role="cell"><div class="cell__k">薪资</div>'
+    + (salary
+      ? '<div class="cell__salary">' + esc(salary) + "</div>"
+      : '<div class="cell__salary is-unknown">未标注</div>')
+    + "</div>"
+    + '<div class="cell" role="cell"><div class="cell__k">来源</div>'
+    + '<span class="src' + (isManual ? " src--manual" : "") + '" title="' + esc(sourceText) + '">'
+    + esc(sourceText) + "</span></div>"
+    + '<div class="cell ops" role="cell">'
+    + '<button class="linkbtn" type="button" data-action="edit" data-id="' + esc(id) + '" aria-label="编辑 ' + esc(name) + '">编辑</button>'
+    + '<button class="linkbtn linkbtn--danger" type="button" data-action="delete" data-id="' + esc(id) + '" aria-label="删除 ' + esc(name) + '">删除</button>'
+    + "</div>"
+    + "</div>";
+}
+
+function renderPager() {
+  var pager = $("#pager");
+  if (!pager) return;
+  var total = filteredJobs().length;
+  if (!total) {
+    pager.innerHTML = "";
+    return;
+  }
+  var pages = pageCount();
+  var page = clampPage();
+  pager.innerHTML = '<button class="btn btn--ghost" type="button" data-action="prev"' + (page <= 1 ? " disabled" : "") + ">上一页</button>"
+    + '<span class="pager__info">第 ' + page + " / " + pages + " 页</span>"
+    + '<button class="btn btn--ghost" type="button" data-action="next"' + (page >= pages ? " disabled" : "") + ">下一页</button>";
+}
+
+function renderFieldErrors() {
+  FIELD_KEYS.forEach(function (key) {
+    var input = $("#f-" + key);
+    var err = $("#err-" + key);
+    var msg = ui.errors[key] || "";
+    if (input) input.classList.toggle("is-invalid", !!msg && !!ui.jobOpen);
+    if (err) {
+      err.textContent = msg;
+      err.hidden = !msg;
+    }
+  });
+}
+
+function renderOverlays() {
+  var jobModal = $("#jobModal");
+  if (jobModal) {
+    jobModal.hidden = !ui.jobOpen;
+    setText("#jobModalTitle", ui.editId ? "编辑岗位" : "新增岗位");
+    var save = $("#saveBtn");
+    if (save) {
+      save.disabled = !!ui.saving;
+      save.textContent = ui.saving ? "保存中…" : "保存";
+    }
+    var cancel = $("#jobCancel");
+    if (cancel) cancel.disabled = !!ui.saving;
+    var close = $("#jobClose");
+    if (close) close.disabled = !!ui.saving;
+  }
+
+  var delModal = $("#delModal");
+  if (delModal) {
+    delModal.hidden = !ui.deleteId;
+    var job = ui.deleteId ? findJob(ui.deleteId) : null;
+    setText("#delName", job ? (job.jobName || "未命名职位") : "");
+    var confirm = $("#delConfirm");
+    if (confirm) {
+      confirm.disabled = !!ui.deleting;
+      confirm.textContent = ui.deleting ? "删除中…" : "确定删除";
+    }
+    var delCancel = $("#delCancel");
+    if (delCancel) delCancel.disabled = !!ui.deleting;
+  }
+}
+
+/* 唯一刷新入口 */
+function refreshAll() {
+  renderShell();
+  renderStats();
+  renderTable();
+  renderPager();
+  renderFieldErrors();
+  renderOverlays();
+}
+
+/* =========================================================
+   交互层：浮层与表单
+   ========================================================= */
+function readForm() {
+  var values = {};
+  FIELD_KEYS.forEach(function (key) {
+    var input = $("#f-" + key);
+    values[key] = input ? String(input.value || "").trim() : "";
+  });
+  return values;
+}
+
+function fillForm(job) {
+  FIELD_KEYS.forEach(function (key) {
+    var input = $("#f-" + key);
+    if (input) input.value = fieldValue(job, key);
+  });
+}
+
+function buildPayload(values) {
+  var payload = {};
+  ["jobName", "brandName", "cityName", "areaDistrict", "businessDistrict",
+    "salaryDesc", "experience", "degree", "jobUrl", "publishedAt"].forEach(function (key) {
+    payload[key] = values[key] || "";
+  });
+  payload.skills = splitList(values.skills);
+  payload.jobLabels = splitList(values.jobLabels);
+  payload.welfareList = splitList(values.welfareList);
+  return payload;
+}
+
+function fieldKeyOf(el) {
+  if (!el || !el.id || el.id.indexOf("f-") !== 0) return "";
+  var key = el.id.slice(2);
+  return FIELD_KEYS.indexOf(key) >= 0 ? key : "";
+}
+
+function focusFirstError() {
+  for (var i = 0; i < FIELD_KEYS.length; i++) {
+    var key = FIELD_KEYS[i];
+    if (!ui.errors[key]) continue;
+    var input = $("#f-" + key);
+    if (input) {
+      input.focus();
+      try { input.scrollIntoView({ block: "center" }); } catch (err) { /* 老浏览器忽略 */ }
+    }
+    return;
+  }
+}
+
+function openJobModal(id) {
+  var job = id ? findJob(id) : null;
+  if (id && !job) {
+    showToast("岗位不存在，请刷新后重试", "error");
+    return;
+  }
+  ui.jobOpen = true;
+  ui.editId = job ? job.id : null;
+  ui.errors = {};
+  fillForm(job);
+  refreshAll();
+  window.setTimeout(function () {
+    var first = $("#f-jobName");
+    if (first) first.focus();
+  }, 30);
+}
+
+function closeJobModal() {
+  if (ui.saving) return; /* 提交中禁止关闭 */
+  ui.jobOpen = false;
+  ui.editId = null;
+  ui.errors = {};
+  refreshAll();
+}
+
+function openDelete(id) {
+  var job = findJob(id);
+  if (!job) {
+    showToast("岗位不存在，请刷新后重试", "error");
+    return;
+  }
+  if (!canWrite()) {
+    showToast("没有权限执行该操作", "error");
+    return;
+  }
+  ui.deleteId = id;
+  ui.deleting = false;
+  refreshAll();
+}
+
+function closeDelete() {
+  if (ui.deleting) return;
+  ui.deleteId = null;
+  refreshAll();
+}
+
+async function submitJobForm(event) {
+  event.preventDefault();
+  if (ui.saving) return;
+  if (!canWrite()) {
+    showToast("没有权限执行该操作", "error");
+    return;
+  }
+  var values = readForm();
+  var errors = validate(values);
+  if (Object.keys(errors).length) {
+    ui.errors = errors;
+    renderFieldErrors();
+    focusFirstError();
+    return;
+  }
+  ui.errors = {};
+  ui.saving = true;
+  refreshAll();
+
+  var editingId = ui.editId;
+  var path = editingId
+    ? "/api/admin/jobs/" + encodeURIComponent(editingId)
+    : "/api/admin/jobs";
+  try {
+    var out = await api(path, {
+      method: editingId ? "PUT" : "POST",
+      body: buildPayload(values)
+    });
+    if (out.status === 401) return;
+    if (out.status === 403) {
+      showToast("没有权限执行该操作", "error");
+      return;
+    }
+    if (out.status === 422 && out.data && out.data.fields) {
+      ui.errors = normalizeServerFields(out.data.fields);
+      renderFieldErrors();
+      focusFirstError();
+      showToast("请检查表单填写", "error");
+      return;
+    }
+    if (!out.ok || !out.data || out.data.ok !== true) {
+      showToast("保存失败，请重试", "error");
+      return;
+    }
+    ui.saving = false;
+    ui.jobOpen = false;
+    ui.editId = null;
+    ui.errors = {};
+    await loadJobs();
+    showToast("已保存", "ok");
+  } catch (err) {
+    showToast("网络异常，请重试", "error");
+  } finally {
+    ui.saving = false;
+    refreshAll();
+  }
+}
+
+async function confirmDelete() {
+  if (!ui.deleteId || ui.deleting) return;
+  if (!canWrite()) {
+    showToast("没有权限执行该操作", "error");
+    return;
+  }
+  ui.deleting = true;
+  var target = ui.deleteId;
+  refreshAll();
+  try {
+    var out = await api("/api/admin/jobs/" + encodeURIComponent(target), { method: "DELETE" });
+    if (out.status === 401) return;
+    if (out.status === 403) {
+      showToast("没有权限执行该操作", "error");
+      return;
+    }
+    if (!out.ok || !out.data || out.data.ok !== true) {
+      showToast("删除失败，请重试", "error");
+      return;
+    }
+    ui.deleteId = null;
+    await loadJobs();
+    showToast("已删除", "ok");
+  } catch (err) {
+    showToast("网络异常，请重试", "error");
+  } finally {
+    ui.deleting = false;
+    refreshAll();
+  }
+}
+
+/* =========================================================
+   事件绑定（一次性，容器级委托）
+   ========================================================= */
+function bindEvents() {
+  var loginForm = $("#loginForm");
+  if (loginForm) loginForm.addEventListener("submit", doLogin);
+
+  var consoleView = $("#consoleView");
+  if (consoleView) {
+    consoleView.addEventListener("click", function (e) {
+      var btn = e.target.closest("[data-action]");
+      if (!btn) return;
+      var action = btn.dataset.action;
+      var id = btn.dataset.id || "";
+      if (action === "logout") {
+        doLogout();
+      } else if (action === "add") {
+        openJobModal(null);
+      } else if (action === "edit") {
+        if (!canWrite()) { showToast("没有权限执行该操作", "error"); return; }
+        openJobModal(id);
+      } else if (action === "delete") {
+        openDelete(id);
+      } else if (action === "prev") {
+        state.page = clampPage() - 1;
+        refreshAll();
+      } else if (action === "next") {
+        state.page = clampPage() + 1;
+        refreshAll();
+      }
+    });
+
+    consoleView.addEventListener("input", function (e) {
+      if (!e.target || e.target.id !== "q") return;
+      state.keyword = e.target.value;
+      state.page = 1;
+      refreshAll();
+    });
+  }
+
+  var jobModal = $("#jobModal");
+  if (jobModal) {
+    jobModal.addEventListener("click", function (e) {
+      var btn = e.target.closest('[data-action="close-job"]');
+      if (btn) { closeJobModal(); return; }
+      if (e.target === jobModal) closeJobModal();
+    });
+  }
+
+  var jobForm = $("#jobForm");
+  if (jobForm) {
+    jobForm.addEventListener("submit", submitJobForm);
+    jobForm.addEventListener("input", function (e) {
+      var key = fieldKeyOf(e.target);
+      if (!key) return;
+      var msg = validate(readForm())[key] || "";
+      if (msg) ui.errors[key] = msg;
+      else delete ui.errors[key];
+      renderFieldErrors();
+    });
+  }
+
+  var delModal = $("#delModal");
+  if (delModal) {
+    delModal.addEventListener("click", function (e) {
+      var btn = e.target.closest("[data-action]");
+      if (btn && btn.dataset.action === "cancel-delete") { closeDelete(); return; }
+      if (btn && btn.dataset.action === "confirm-delete") { confirmDelete(); return; }
+      if (e.target === delModal) closeDelete();
+    });
+  }
+
+  document.addEventListener("keydown", function (e) {
+    if (e.key !== "Escape") return;
+    if (ui.deleteId) closeDelete();
+    else if (ui.jobOpen) closeJobModal();
+  });
+}
+
+/* =========================================================
+   启动
+   ========================================================= */
+async function boot() {
+  bindEvents();
+  await loadSession();
+  refreshAll();
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", boot);
+} else {
+  boot();
+}
+</script>
+</body>
+</html>

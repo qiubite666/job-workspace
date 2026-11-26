@@ -1,17 +1,20 @@
 // Command jobworkspace 是招聘工作台的单一入口，既是 CLI 也是本地服务。
 //
-// 四个子命令：
+// 五个子命令：
 //
 //	collect  采集岗位并落盘（sample / local / live 三种模式）
 //	serve    启动本地工作台 Web 服务
 //	platforms 列出已注册平台与配置状态
 //	doctor   体检：Go 版本、数据目录、适配器、cookie 可达性
+//	user     后台账号管理（add / list / passwd / delete）
 //
 // 退出码：0 成功 / 1 参数或配置错误 / 2 全部平台失败 / 3 部分平台失败。
 package main
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -24,6 +27,7 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"jobworkspace/internal/auth"
 	"jobworkspace/internal/config"
 	"jobworkspace/internal/model"
 	"jobworkspace/internal/pipeline"
@@ -32,13 +36,14 @@ import (
 	"jobworkspace/internal/platform/catalog"
 	"jobworkspace/internal/platform/liepin"
 	"jobworkspace/internal/store"
+	jobversion "jobworkspace/internal/version"
 	"jobworkspace/internal/web"
 )
 
 // version 是二进制版本号，供 serve 的 /api/health 与发布产物使用。
-// 声明为 var 而非 const，是为了让 release 构建能通过
-// -ldflags "-X main.version=<tag>" 注入真实版本号。
-var version = "1.0.0"
+// 真源在 internal/version，发布构建通过
+// -ldflags "-X jobworkspace/internal/version.Version=<tag>" 覆盖该变量。
+var version = jobversion.Version
 
 // defaultAddr 是 serve 的默认监听地址，强制回环地址，避免误暴露到局域网。
 const defaultAddr = "127.0.0.1:8787"
@@ -62,6 +67,8 @@ func run(args []string) int {
 		return runPlatforms(args[1:])
 	case "doctor":
 		return runDoctor(args[1:])
+	case "user":
+		return runUser(args[1:])
 	case "help", "-h", "--help":
 		usage(os.Stdout)
 		return 0
@@ -81,10 +88,12 @@ func usage(w *os.File) {
   jobworkspace serve     [flags]   启动本地工作台
   jobworkspace platforms           列出已注册平台
   jobworkspace doctor              环境体检
+  jobworkspace user      <add|list|passwd|delete>   后台账号管理
 
 collect 参数: --query --city --pages --page-size --platforms --mode --file
               --cookie --allow-disallowed --out --json --quiet --config
 serve 参数:   --addr --config
+user 参数:    --data --username --name --role --password
 `, version)
 }
 
@@ -336,6 +345,7 @@ func runServe(args []string) int {
 
 	addr := fs.String("addr", defaultAddr, "监听地址，建议保持 127.0.0.1")
 	configPath := fs.String("config", "", "外部配置文件路径，空则用内置配置")
+	dataDir := fs.String("data", "data", "数据目录（岗位、后台账号、采集报告都落在这里）")
 	quiet := fs.Bool("quiet", false, "只输出错误")
 	if err := fs.Parse(args); err != nil {
 		return 1
@@ -349,7 +359,7 @@ func runServe(args []string) int {
 	initAdapters()
 	catalog.Build(cfg)
 
-	srv := web.New(cfg, store.New("data"), logger)
+	srv := web.New(cfg, store.New(*dataDir), logger)
 	if err := srv.Run(*addr); err != nil {
 		fmt.Fprintf(os.Stderr, "服务启动失败：%v\n", err)
 		return 1
@@ -572,4 +582,140 @@ func yesNo(b bool) string {
 		return "是"
 	}
 	return "否"
+}
+
+// runUser 实现后台账号管理：add / list / passwd / delete。
+//
+// 账号落在 <data>/users.json，必须与 serve 使用同一个数据目录（默认都是 data）。
+// add 不指定 --password 时会生成随机密码并只打印一次，避免明文进 shell 历史。
+func runUser(args []string) int {
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "用法: jobworkspace user <add|list|passwd|delete> [--data data] [--username xxx]")
+		return 1
+	}
+	sub := args[0]
+	fs := flag.NewFlagSet("user "+sub, flag.ExitOnError)
+	dataDir := fs.String("data", "data", "数据目录，需与 serve 一致")
+	username := fs.String("username", "", "用户名（3~32 位小写字母/数字/._-）")
+	display := fs.String("name", "", "显示名，默认与用户名相同")
+	role := fs.String("role", "admin", "角色：admin（可增删改）| viewer（只读）")
+	password := fs.String("password", "", "密码，留空则自动生成 16 位随机密码")
+	if err := fs.Parse(args[1:]); err != nil {
+		return 1
+	}
+
+	us := auth.NewUserStore(filepath.Join(*dataDir, "users.json"))
+	if err := us.Load(); err != nil {
+		fmt.Fprintf(os.Stderr, "加载用户文件失败: %v\n", err)
+		return 1
+	}
+
+	switch sub {
+	case "add":
+		if strings.TrimSpace(*username) == "" {
+			fmt.Fprintln(os.Stderr, "缺少 --username")
+			return 1
+		}
+		r, err := auth.ParseRole(*role)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "%v\n", err)
+			return 1
+		}
+		pw := *password
+		generated := false
+		if pw == "" {
+			pw = randomPassword()
+			generated = true
+		}
+		name := *display
+		if name == "" {
+			name = *username
+		}
+		u, err := us.Create(*username, name, r, pw)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "创建失败: %v\n", err)
+			return 1
+		}
+		fmt.Printf("已创建用户 %s（角色 %s，文件 %s）\n", u.Username, u.Role, us.Path())
+		if generated {
+			fmt.Printf("初始密码: %s\n（仅显示这一次，请立即保存；可用 user passwd 重置）\n", pw)
+		}
+		return 0
+
+	case "list":
+		users := us.List()
+		if len(users) == 0 {
+			fmt.Println("尚无后台账号，请先执行: jobworkspace user add --username admin")
+			return 0
+		}
+		tw := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+		fmt.Fprintln(tw, "用户名\t显示名\t角色\t状态\t更新时间")
+		for _, u := range users {
+			state := "启用"
+			if u.Disabled {
+				state = "已禁用"
+			}
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", u.Username, u.DisplayName, u.Role, state, u.UpdatedAt)
+		}
+		return flushTab(tw)
+
+	case "passwd":
+		if strings.TrimSpace(*username) == "" {
+			fmt.Fprintln(os.Stderr, "缺少 --username")
+			return 1
+		}
+		pw := *password
+		generated := false
+		if pw == "" {
+			pw = randomPassword()
+			generated = true
+		}
+		if err := us.SetPassword(*username, pw); err != nil {
+			fmt.Fprintf(os.Stderr, "重置失败: %v\n", err)
+			return 1
+		}
+		fmt.Printf("已重置 %s 的密码\n", *username)
+		if generated {
+			fmt.Printf("新密码: %s\n（仅显示这一次）\n", pw)
+		}
+		fmt.Println("提示：已登录的浏览器会话仍然有效，直至过期或服务重启；如需立即失效请重启服务。")
+		return 0
+
+	case "delete":
+		if strings.TrimSpace(*username) == "" {
+			fmt.Fprintln(os.Stderr, "缺少 --username")
+			return 1
+		}
+		if err := us.Delete(*username); err != nil {
+			fmt.Fprintf(os.Stderr, "删除失败: %v\n", err)
+			return 1
+		}
+		fmt.Printf("已删除用户 %s\n", *username)
+		return 0
+
+	default:
+		fmt.Fprintf(os.Stderr, "未知的 user 子命令 %q（可选 add|list|passwd|delete）\n", sub)
+		return 1
+	}
+}
+
+// flushTab 把表格缓冲刷出并返回退出码，避免每个分支重复处理 err。
+func flushTab(tw *tabwriter.Writer) int {
+	if err := tw.Flush(); err != nil {
+		fmt.Fprintf(os.Stderr, "输出失败: %v\n", err)
+		return 1
+	}
+	return 0
+}
+
+// randomPassword 生成 16 位 URL 安全随机密码，用于账号初始化。
+func randomPassword() string {
+	b := make([]byte, 12)
+	if _, err := rand.Read(b); err != nil {
+		// crypto/rand 失败属于系统级异常，退回时间戳不足以作为长期方案，
+		// 这里显式提示而不是静默降级。
+		fmt.Fprintf(os.Stderr, "生成随机密码失败: %v\n", err)
+		return ""
+	}
+	return base64.RawURLEncoding.EncodeToString(b)
 }

@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+#
+# .githooks/pre-push —— 推送前本地质量闸门：gofmt / go vet / go test 任一失败即阻止推送。
+#
+# 安装：scripts/install-hooks.sh（等价于 git config core.hooksPath .githooks）
+set -uo pipefail
+
+# 吃掉 stdin（git 通过它传入 refs），避免上游写入时产生 SIGPIPE
+cat >/dev/null || true
+
+repo_root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+if [ -n "$repo_root" ]; then
+  cd "$repo_root" || exit 1
+fi
+
+failed=0
+
+echo "[pre-push] 检查代码格式（gofmt -l .）"
+fmt_out="$(gofmt -l . 2>&1 || true)"
+if [ -n "$fmt_out" ]; then
+  echo "[pre-push][失败] 以下文件未按 gofmt 格式化：" >&2
+  printf '%s\n' "$fmt_out" >&2
+  echo >&2
+  # 打印差异，方便直接看到要改什么
+  while IFS= read -r f; do
+    [ -n "$f" ] && gofmt -d "$f" >&2
+  done <<< "$fmt_out"
+  echo "[pre-push] 修复方式：gofmt -w ." >&2
+  failed=1
+else
+  echo "[pre-push] 格式检查通过"
+fi
+
+echo "[pre-push] 静态检查（go vet ./...）"
+if go vet ./...; then
+  echo "[pre-push] go vet 通过"
+else
+  echo "[pre-push][失败] go vet 未通过" >&2
+  failed=1
+fi
+
+echo "[pre-push] 单元测试（go test ./...）"
+if go test ./...; then
+  echo "[pre-push] 单元测试通过"
+else
+  echo "[pre-push][失败] go test 未通过" >&2
+  failed=1
+fi
+
+if [ "$failed" -ne 0 ]; then
+  echo >&2
+  echo "[pre-push] 校验未通过，已阻止本次推送。" >&2
+  exit 1
+fi
+
+echo "[pre-push] 全部检查通过，允许推送。"
+exit 0

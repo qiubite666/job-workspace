@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -24,6 +25,7 @@ import (
 
 	_ "embed"
 
+	"jobworkspace/internal/auth"
 	"jobworkspace/internal/config"
 	"jobworkspace/internal/model"
 	"jobworkspace/internal/store"
@@ -45,18 +47,29 @@ const stderrTailLimit = 2000
 //go:embed index.html
 var indexHTML []byte
 
+//go:embed admin.html
+var adminHTML []byte
+
 // collectMu 保证同一时刻只有一个采集子进程在运行。
 //
 // 使用 TryLock 而非 Lock：并发请求应当立刻拿到 409，而不是排队等待。
 var collectMu sync.Mutex
 
-// Server 是本地 Web 服务实例，持有配置、存储与日志依赖。
+// Server 是本地 Web 服务实例，持有配置、存储、认证与日志依赖。
 type Server struct {
 	cfg     *config.Config
 	st      *store.Store
 	log     *slog.Logger
 	handler http.Handler
+
+	// users 与 sessions 是 v1.1 新增的认证依赖：
+	// 用户落盘在 <data>/users.json，会话仅存内存（进程重启即失效）。
+	users    *auth.UserStore
+	sessions *auth.SessionManager
 }
+
+// sessionTTL 是登录会话的有效期；剩余不足一半时会自动续期。
+const sessionTTL = 12 * time.Hour
 
 // New 构造 Web 服务并完成路由注册。
 //
@@ -65,17 +78,62 @@ func New(cfg *config.Config, st *store.Store, log *slog.Logger) *Server {
 	if log == nil {
 		log = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
-	s := &Server{cfg: cfg, st: st, log: log}
+	s := &Server{
+		cfg:      cfg,
+		st:       st,
+		log:      log,
+		sessions: auth.NewSessionManager(sessionTTL),
+	}
+
+	// 认证存储跟随数据目录，缺文件视为「尚未初始化」，不阻断服务启动。
+	if st != nil {
+		s.users = auth.NewUserStore(filepath.Join(st.Dir(), "users.json"))
+		if err := s.users.Load(); err != nil {
+			log.Error("加载用户文件失败，后台登录将不可用", "err", err, "path", s.users.Path())
+		} else if s.users.Count() == 0 {
+			log.Warn("尚未创建任何后台账号，请先执行 `jobworkspace user add --username admin`")
+		}
+	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /", s.handleIndex)
+	mux.HandleFunc("GET /admin", s.handleAdminPage)
 	mux.HandleFunc("GET /api/health", s.handleHealth)
 	mux.HandleFunc("GET /api/jobs", s.handleJobs)
 	mux.HandleFunc("GET /api/platforms", s.handlePlatforms)
-	mux.HandleFunc("POST /api/collect", s.handleCollect)
+
+	// 采集会真实发起外部请求，v1.1 起要求登录；未初始化账号时该接口不可用。
+	mux.HandleFunc("POST /api/collect", s.requireAuth(s.handleCollect))
+
+	// 认证
+	mux.HandleFunc("POST /api/auth/login", s.handleLogin)
+	mux.HandleFunc("POST /api/auth/logout", s.handleLogout)
+	mux.HandleFunc("GET /api/auth/me", s.handleMe)
+
+	// 后台管理：读接口 viewer 亦可，写接口仅 admin。
+	mux.HandleFunc("GET /api/admin/jobs", s.requireAuth(s.handleAdminListJobs))
+	mux.HandleFunc("POST /api/admin/jobs", s.requireRole(auth.RoleAdmin, s.handleAdminCreateJob))
+	mux.HandleFunc("GET /api/admin/jobs/{id}", s.requireAuth(s.handleAdminGetJob))
+	mux.HandleFunc("PUT /api/admin/jobs/{id}", s.requireRole(auth.RoleAdmin, s.handleAdminUpdateJob))
+	mux.HandleFunc("DELETE /api/admin/jobs/{id}", s.requireRole(auth.RoleAdmin, s.handleAdminDeleteJob))
 
 	s.handler = withLogging(log, mux)
 	return s
+}
+
+// handleAdminPage 返回内嵌的后台管理单页。
+//
+// 页面本身公开可取（内部只有登录卡片），真正的数据保护在 API 层；
+// 这样未登录用户也能看到登录框，而不是被 302 打断。
+func (s *Server) handleAdminPage(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != "/admin" {
+		writeError(w, http.StatusNotFound, "NOT_FOUND", "页面不存在")
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(adminHTML)
 }
 
 // Handler 返回已挂好路由与日志中间件的 http.Handler。

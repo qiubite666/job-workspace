@@ -176,19 +176,71 @@ jobworkspace doctor
 
 ## 7. HTTP API
 
-| 方法 | 路径 | 说明 |
-|---|---|---|
-| GET | `/` | 工作台页面 |
-| GET | `/api/health` | 健康检查、岗位数、数据源 |
-| GET | `/api/jobs` | 岗位列表 + 元信息（含最近一次采集报告） |
-| GET | `/api/platforms` | 平台清单与城市码表 |
-| POST | `/api/collect` | 触发采集（单飞锁，并发返回 409） |
+| 方法 | 路径 | 鉴权 | 说明 |
+|---|---|---|---|
+| GET | `/` | 公开 | 工作台页面 |
+| GET | `/admin` | 公开（页面内置登录框） | 后台管理页面 |
+| GET | `/api/health` | 公开 | 健康检查、岗位数、数据源 |
+| GET | `/api/jobs` | 公开 | 岗位列表 + 元信息（含最近一次采集报告） |
+| GET | `/api/platforms` | 公开 | 平台清单与城市码表 |
+| POST | `/api/collect` | 登录 | 触发采集（单飞锁，并发返回 409） |
+| POST | `/api/auth/login` | 公开 | 登录，成功下发 `wb_sid` Cookie |
+| POST | `/api/auth/logout` | 公开 | 退出（幂等） |
+| GET | `/api/auth/me` | 公开 | 探测登录态，未登录返回 `authenticated:false` |
+| GET | `/api/admin/jobs` | 登录 | 后台岗位列表（含搜索） |
+| GET | `/api/admin/jobs/{id}` | 登录 | 单个岗位 |
+| POST | `/api/admin/jobs` | admin | 新增岗位（`platform=manual`） |
+| PUT | `/api/admin/jobs/{id}` | admin | 编辑岗位 |
+| DELETE | `/api/admin/jobs/{id}` | admin | 删除岗位 |
 
 服务只监听 `127.0.0.1`，不对外暴露。
 
+**鉴权说明**：`v1.1.0` 起 `/api/collect` 需要登录——它会真实发起对外请求，公开暴露会牵连服务器 IP。
+其余只读接口保持公开，工作台前台使用不受影响。
+
 ---
 
-## 8. 新增一个招聘平台（3 步）
+## 8. 登录与后台管理（v1.1.0）
+
+### 8.1 首次创建管理员
+
+服务启动时若 `data/users.json` 为空，日志会给出提示。创建账号：
+
+```bash
+./jobworkspace user add --username admin --name 管理员 --role admin
+# 未指定 --password 时会生成 16 位随机密码，只打印一次
+```
+
+| 子命令 | 说明 |
+|---|---|
+| `user add --username x [--role admin\|viewer] [--password x]` | 新建账号 |
+| `user list` | 列出账号（不含哈希） |
+| `user passwd --username x` | 重置密码 |
+| `user delete --username x` | 删除账号（拒绝删除最后一个管理员） |
+
+### 8.2 认证实现
+
+- **密码哈希**：PBKDF2-HMAC-SHA256，210000 次迭代、16 字节盐、32 字节密钥，编码
+  `pbkdf2-sha256$210000$<saltB64>$<hashB64>`；比对使用 `crypto/subtle` 恒定时间比较。
+  为保持零第三方依赖，未引入 `golang.org/x/crypto`，实现以 RFC 2898 标准向量做单测。
+- **会话**：服务端内存会话（`crypto/rand` 32 字节 ID）+ `HttpOnly` Cookie `wb_sid`，
+  `SameSite=Lax`，TTL 12h，剩余不足一半自动续期。**进程重启会话失效**（单实例设计）。
+- **每请求复核**：不仅校验会话，还会回查用户当前状态——被删除/禁用立即踢下线，
+  角色被改动立即生效（降级为 viewer 后写接口立刻 403）。
+- **登录限流**：同一 `(客户端IP, 用户名)` 连续失败 5 次锁定 60 秒，返回 429。
+- **权限模型**：`admin` 可增删改；`viewer` 只读。写接口统一走 `requireRole(admin)`。
+
+### 8.3 后台能力
+
+- 岗位列表：分页、按职位/公司/城市搜索
+- 新增 / 编辑：服务端字段级校验（必填、长度、URL 协议），失败返回 422 + 字段错误映射
+- 删除：二次确认后不可撤销
+- 手工录入的岗位 `platform=manual`，与采集数据同表共存，不影响采集去重
+- 薪资原文由 `parser.ParseSalary` 解析成数值，与采集链路口径一致
+
+---
+
+## 9. 新增一个招聘平台（3 步）
 
 1. 复制骨架：`cp -r internal/platform/template internal/platform/xyz`
 2. 在 `xyz` 包里实现 `New(p *config.Platform) platform.Adapter`，若接口与 `httpjson` 一致，
