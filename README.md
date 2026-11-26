@@ -1,0 +1,232 @@
+# 求职工作台（job-workspace）
+
+一个**单二进制、零第三方依赖**的本地求职工作台：可插拔地采集招聘平台职位数据，落盘为统一结构，
+并通过内置 Web 界面做检索、筛选、收藏与投递跟进。
+
+- 采集侧：`collect` 子命令，支持 `sample`（离线示例）/ `local`（离线导入原始响应）/ `live`（受控联网）三种模式
+- 展示侧：`serve` 子命令，启动本地服务并打开单文件工作台
+- 接入侧：新增招聘平台 = **新增一个适配器包 + 一段配置**，核心业务流程零改动
+
+> 视觉风格参考 Apple 官网的设计语言（留白、层级、克制配色、细节动效），仅借鉴风格，未使用其任何品牌文案或素材。
+
+**仓库内容边界**：本仓库**不含**任何账号凭据、Cookie、令牌或真实个人数据。
+`data/` 下入库的两个样例文件是**合成假数据**（详见 [data/README.md](data/README.md)）；
+采集产物 `data/jobs.json`、`data/collect.report.json` 与编译产物一律被 `.gitignore` 排除。
+
+```bash
+git clone git@github.com:qiubite666/job-workspace.git
+```
+
+---
+
+## 1. 快速开始
+
+要求 Go 1.22+（实测 1.26.4），**无需 `go mod tidy`、无需联网下载依赖**。
+
+```bash
+cd job-workspace
+
+# 1) 零网络自检：读示例数据 → 去重排序 → 落盘
+go run . collect --mode=sample --query=Java
+
+# 2) 解析链路自检：把 BOSS 真实响应夹具走一遍「映射 → 收口」
+go run . collect --mode=local --file data/samples/boss.raw.json --platforms=boss --query=Java --city=北京
+
+# 3) 启动工作台
+go run . serve
+# 浏览器打开 http://127.0.0.1:8787
+```
+
+编译为单文件二进制：
+
+```bash
+go build -o jobworkspace.exe .
+./jobworkspace.exe serve
+```
+
+---
+
+## 2. 目录结构
+
+```
+job-workspace/
+├── main.go                       CLI 入口：collect / serve / platforms / doctor
+├── go.mod                        模块 jobworkspace，零第三方依赖
+├── contracts/CONTRACT.md         接入层接口契约（唯一真源）
+├── internal/
+│   ├── model/job.go              统一岗位模型 Job / JobDraft / Report
+│   ├── errs/errors.go            错误码与异常归一化
+│   ├── parser/salary.go          薪资原文解析
+│   ├── parser/time.go            发布时间解析
+│   ├── mapping/mapper.go         声明式字段映射 + 收口
+│   ├── dedupe/dedupe.go          ID / 指纹两级去重
+│   ├── ratelimit/limiter.go      全局串行限速
+│   ├── httpx/client.go           限速 + 重试 + 超时
+│   ├── httpx/robots.go           robots.txt 网关
+│   ├── config/config.go          配置加载与默认值回填
+│   ├── platform/registry.go      Adapter 接口 + 注册表（唯一扩展点）
+│   ├── platform/httpjson/        可复用的「HTTP-JSON 平台」引擎
+│   ├── platform/boss/            BOSS 直聘适配器
+│   ├── platform/liepin/          猎聘适配器（骨架，默认禁用）
+│   ├── platform/template/        复制即用的新平台骨架
+│   ├── platform/catalog/         适配器工厂与装配
+│   ├── pipeline/collect.go       采集编排（平台无关）
+│   ├── store/store.go            data/*.json 原子读写与合并
+│   └── web/server.go + index.html  本地服务 + 单文件工作台
+├── config/platforms.json         平台配置（运行时可直接复制修改，用 --config 覆盖）
+└── data/
+    ├── jobs.sample.json          离线示例数据（8 条，含面议/日薪/缺发布时间）
+    ├── samples/boss.raw.json     BOSS 原始响应夹具（9 条）
+    ├── jobs.json                 采集产物（运行时生成）
+    └── collect.report.json       采集报告（运行时生成）
+```
+
+---
+
+## 3. 分层架构
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│  展示层   internal/web  （单文件 HTML，内联 CSS/JS/SVG）        │
+├──────────────────────────────────────────────────────────────┤
+│  编排层   internal/pipeline      平台无关：翻页/降级/统计        │
+│           internal/store         原子落盘 + 按 ID 合并           │
+├──────────────────────────────────────────────────────────────┤
+│  能力层   parser（薪资/时间） mapping（字段映射） dedupe（去重）  │
+│           httpx（限速/重试/robots） ratelimit                   │
+├──────────────────────────────────────────────────────────────┤
+│  接入层   platform.Adapter 接口 + 注册表                        │
+│           ├── httpjson  通用引擎（配置驱动）                    │
+│           ├── boss      BOSS 直聘                              │
+│           └── liepin    猎聘（骨架）                            │
+└──────────────────────────────────────────────────────────────┘
+```
+
+**调用链单向**：展示 → 编排 → 能力 → 接入。接入层只依赖 `model/errs/config/httpx/mapping`，
+**不反向依赖 pipeline 或 web**；新增平台不会触碰任何上层代码。
+
+---
+
+## 4. 统一数据结构
+
+所有平台最终收敛为 `model.Job`，字段同名同义。关键字段：
+
+| 字段 | 说明 |
+|---|---|
+| `id` | `平台:平台ID`；无平台 ID 时 `平台:sha1(公司\|岗位\|城市\|区域)前16位` |
+| `salaryDesc` | 薪资原文，永不改写 |
+| `salaryMin/Max` | 原始单位下的数值；`null` 表示未知 |
+| `salaryUnit` | `month` / `day` / `year` / `""` |
+| `salaryKind` | `range` / `single` / `negotiable` / `unknown` |
+| `salaryMonthlyMin/Max` | 归一到「元/月」，用于跨单位排序（日薪按 21.75 天/月） |
+| `publishedAt` | RFC3339 或 `""`；`publishedAtSource` 标注 `api/detail/missing` |
+| `jobUrl` | 详情页链接 |
+
+缺值约定：字符串 `""`、数值 `null`、数组 `[]`——前端因此可以安全地判空，不会出现 `undefined`。
+
+---
+
+## 5. 三种采集模式
+
+| 模式 | 网络 | 用途 | 数据来源 |
+|---|---|---|---|
+| `sample` | 否 | 零依赖自检、演示 | `data/jobs.sample.json` |
+| `local` | 否 | 验证某平台的解析/映射链路 | `--file` 指定的原始响应 JSON |
+| `live` | 是 | 真实采集 | 平台搜索接口 |
+
+### 合规说明（重要）
+
+`https://www.zhipin.com/robots.txt` 中存在 `Disallow: /*?*`，**所有带查询参数的 URL 均被声明禁止抓取**，
+搜索接口属于此列。因此本工具的默认行为是：
+
+1. `live` 模式内置 robots 网关：命中 `Disallow` 即抛 `ROBOTS_DISALLOWED` 并停止，**默认不放行**。
+2. 只有显式传入 `--allow-disallowed`（界面里对应一个默认不勾选的复选框）才会放行，并打印风险提示。
+3. 无论是否放行，请求间隔强制 `3~6s` 随机抖动、单平台最多 10 页、失败按 800ms×2ⁿ 退避且仅重试可重试错误。
+4. 工具不绕过验证码、不破解登录、不伪造指纹；`live` 需要使用者自备已登录的 cookie。
+5. 若所在场景不允许抓取，请只用 `local` 模式：自行在浏览器导出接口响应，再导入解析——完全离线、零请求。
+
+---
+
+## 6. CLI 参考
+
+```
+jobworkspace collect [flags]
+  --query <kw>            关键词
+  --city <name|code>      城市，默认 北京
+  --pages <n>             页数，默认取配置，上限 maxPages
+  --page-size <n>         每页条数
+  --platforms a,b         仅跑指定平台
+  --mode sample|local|live  默认 sample
+  --file <path>           local 模式的原始响应文件
+  --cookie <str>          live 模式登录态（也读 BOSS_COOKIE）
+  --allow-disallowed      显式放行 robots 禁止路径
+  --out <path>            默认 data/jobs.json
+  --config <path>         外部配置，默认用内嵌 platforms.json
+  --json                  以 JSON 输出摘要
+  --quiet                 只输出错误
+
+jobworkspace serve  [--addr 127.0.0.1:8787]
+jobworkspace platforms
+jobworkspace doctor
+```
+
+退出码：`0` 成功 / `1` 参数或配置错误 / `2` 全部平台失败 / `3` 部分平台失败。
+
+---
+
+## 7. HTTP API
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/` | 工作台页面 |
+| GET | `/api/health` | 健康检查、岗位数、数据源 |
+| GET | `/api/jobs` | 岗位列表 + 元信息（含最近一次采集报告） |
+| GET | `/api/platforms` | 平台清单与城市码表 |
+| POST | `/api/collect` | 触发采集（单飞锁，并发返回 409） |
+
+服务只监听 `127.0.0.1`，不对外暴露。
+
+---
+
+## 8. 新增一个招聘平台（3 步）
+
+1. 复制骨架：`cp -r internal/platform/template internal/platform/xyz`
+2. 在 `xyz` 包里实现 `New(p *config.Platform) platform.Adapter`，若接口与 `httpjson` 一致，
+   直接 `return httpjson.New(httpjson.SpecFromConfig(p))`，平台差异写进配置即可。
+3. 在 `config/platforms.json` 增加一条 `xyz` 配置，并在 `main.go` 的 `initAdapters()` 里加一行
+   `xyz.RegisterFactory()`。
+
+**不需要**改 `pipeline`、`store`、`web`、`model`、`dedupe`、`parser` 中任何一行——这就是本次重构的验收标准。
+
+---
+
+## 9. 边界条件与错误处理
+
+| 场景 | 行为 |
+|---|---|
+| 单平台 401/403 | 归一 `AUTH_REQUIRED`，停止该平台翻页，不影响其他平台 |
+| 触发限频 / 风控（code 31/37） | 归一 `RATE_LIMITED` / `BLOCKED`，停止该平台，报告记录错误码 |
+| robots 禁止 | `ROBOTS_DISALLOWED`，未显式放行则不发请求 |
+| 单页超时 | `TIMEOUT`，重试 2 次后放弃该页，平台标记 `failed` |
+| 响应结构变化 | `PARSE_FAILED`，丢弃该条并计入 `dropped`，其余条目继续 |
+| 列表为空 | 记 `EMPTY` 并停止翻页，不视为错误 |
+| 薪资为「面议」/空 | `salaryKind=negotiable/unknown`，数值为 `null`，岗位照常入库 |
+| 发布时间缺失 | `publishedAt=""`、`publishedAtSource="missing"`，排序时排在有时间的之后 |
+| 重复岗位（同 ID / 同指纹） | 保留完整度最高者，计入 `duplicates` |
+| 数据文件不存在 | 回退示例数据，`source=sample`，不报错 |
+| 采集子进程超时 | HTTP 500，返回 stderr 末 2000 字符 |
+
+---
+
+## 10. 已知限制与命名债
+
+- **命名债**：统一模型中的 `bossName` / `bossTitle` 语义是「招聘者姓名 / 招聘者职位」，
+  沿用了 BOSS 直聘的字段词。这是本次统一建模时的历史命名，属于**平台词汇泄漏进核心模型**的瑕疵。
+  改名方案（向后兼容）：`RecruiterName` / `RecruiterTitle`，JSON 同时输出
+  `recruiterName` 与保留别名 `bossName`，前端逐步切到新字段后即可删除旧字段。
+  本次未做，是因为改名要同时触及 model / mapping / 示例数据 / 前端四处，会与并行开发的前端任务冲突。
+- BOSS 直聘列表接口通常**不返回发布时间**，只有部分条目带 `postTime`；缺失时前端显示「时间未提供」，
+  并明确标注来源，不做推断造假。详情页可补，但需要登录态且请求量翻倍，本期未实现。
+- `liepin` 适配器是**骨架**（`experimental: true`、默认 `enabled: false`），只保证接口正确与可编译，不保证可采。
+- 单机单用户设计：无账号体系，收藏/投递状态存浏览器 `localStorage`，靠 JSON 导出导入迁移。
+- 未做分布式去重与增量调度；每次采集为全量抓取后按 ID 合并。
