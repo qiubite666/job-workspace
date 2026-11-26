@@ -74,9 +74,11 @@ jobs:
           ./dist/jobworkspace-linux-amd64 platforms
           # V2 起采集只剩联网模式，不再有 --mode/--file；
           # CI 里不发真实网络请求，只校验子命令与关键参数仍然可用。
-          # Go 的 flag 包把 --help 用法写到 stderr，且用单横线显示参数名，
-          # 因此必须 2>&1 合并后再按 -allow-disallowed 匹配。
-          ./dist/jobworkspace-linux-amd64 collect --help 2>&1 | grep -q -- '-allow-disallowed'
+          # Go 的 flag 包把 --help 用法写到 stderr，且用单横线显示参数名；
+          # 另外 collect 用 ContinueOnError，--help 时进程退出码为 1，
+          # 在 pipefail 下会让整条管道失败。先落变量再匹配，绕开这三个坑。
+          help_text="$(./dist/jobworkspace-linux-amd64 collect --help 2>&1 || true)"
+          printf '%s\n' "$help_text" | grep -q -- '-allow-disallowed'
 
       - name: 生成变更日志
         run: |
