@@ -423,6 +423,34 @@ svg{display:block}
 .job__note:hover{border-color:rgba(0,113,227,.35);color:var(--primary);background:rgba(0,113,227,.04)}
 .job__note.is-filled{border-style:solid;border-color:var(--line);color:var(--muted);background:rgba(0,0,0,.02)}
 
+/* ---------- 招聘者活跃徽标 ---------- */
+/* 独立于发布时间的一小块状态：自带小圆点 + 强调色，nowrap 保证窄屏不拆行 */
+.job__act{
+  display:inline-flex;align-items:center;gap:5px;flex:none;
+  font-size:12px;line-height:1.4;color:var(--primary);white-space:nowrap;
+}
+.job__act::before{content:"";width:5px;height:5px;border-radius:50%;background:currentColor;flex:none}
+
+/* ---------- 职位描述入口 ---------- */
+.job__extra{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}
+.job__jd{
+  display:inline-flex;align-items:center;gap:6px;min-height:38px;padding:0 12px;max-width:100%;
+  border:1px solid rgba(0,0,0,.1);border-radius:10px;background:transparent;
+  color:var(--primary);font-size:13px;cursor:pointer;transition:all .28s var(--ease);
+}
+.job__jd .i{width:15px;height:15px;flex:none}
+.job__jd:hover{background:rgba(0,113,227,.05);border-color:rgba(0,113,227,.32)}
+.job__jd-text{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* ---------- 职位描述弹窗 ---------- */
+.panel--jd{max-width:640px;max-height:min(84vh,760px);display:flex;flex-direction:column}
+.jd-body{
+  flex:1 1 auto;min-height:0;margin-top:4px;padding-right:4px;
+  overflow-y:auto;-webkit-overflow-scrolling:touch;
+  font-size:14px;line-height:1.7;color:var(--text);
+  white-space:pre-wrap;overflow-wrap:anywhere;
+}
+
 /* ---------- Toast ---------- */
 #toast{
   position:fixed;left:50%;bottom:calc(28px + env(safe-area-inset-bottom));transform:translate(-50%,12px);
@@ -770,6 +798,19 @@ svg{display:block}
   </div>
 </div>
 
+<div class="overlay" id="jdModal" role="dialog" aria-modal="true" aria-labelledby="jdTitle">
+  <div class="panel panel--jd">
+    <div class="panel__head">
+      <h2 class="panel__title" id="jdTitle">职位描述</h2>
+      <button class="icon-btn" type="button" id="jdClose" aria-label="关闭职位描述">
+        <svg class="i" aria-hidden="true"><use href="#i-close"></use></svg>
+      </button>
+    </div>
+    <p class="panel__desc" id="jdJob"></p>
+    <div class="jd-body" id="jdBody"></div>
+  </div>
+</div>
+
 </div>
 
 <div id="toast" role="status" aria-live="polite"></div>
@@ -806,6 +847,8 @@ var lastUpdated = "";
 var platformCache = [];
 /* 服务端是否已配置采集登录态；默认 true，仅在健康检查明确告知未配置时才禁用。 */
 var collectReady = true;
+/* 服务端版本号，来自 /api/health 的 version 字段；为空则不展示 */
+var appVersion = "";
 var visibleCount = PAGE_SIZE;
 
 /* 用户数据：与服务端 §2.1 形状一致 */
@@ -1047,6 +1090,8 @@ function resetSession() {
   if (note) note.classList.remove("is-open");
   var collect = $("#collectModal");
   if (collect) collect.classList.remove("is-open");
+  var jd = $("#jdModal");
+  if (jd) jd.classList.remove("is-open");
 }
 
 function expireSession() {
@@ -1186,11 +1231,17 @@ async function loadJobsData() {
   }
 }
 
-/* loadHealth 只取 cookieConfigured：决定「采集」入口是否可用。 */
+/* loadHealth 一次请求同时取两件事：cookieConfigured（决定「采集」入口是否可用）
+   与 version（页脚展示）。不再为版本号单独发请求。 */
 async function loadHealth() {
   var out = await api("/api/health", { handleUnauthorized: false });
-  if (out.ok && out.data && typeof out.data.cookieConfigured === "boolean") {
-    collectReady = out.data.cookieConfigured;
+  if (out.ok && out.data) {
+    if (typeof out.data.cookieConfigured === "boolean") {
+      collectReady = out.data.cookieConfigured;
+    }
+    if (typeof out.data.version === "string") {
+      appVersion = out.data.version.trim();
+    }
   }
   var btn = document.querySelector('[data-action="collect"]');
   if (btn && !collectReady) {
@@ -1490,7 +1541,11 @@ function renderHeader() {
   if (updated) updated.textContent = updatedLabel;
 
   var footer = $("#footerMeta");
-  if (footer) footer.textContent = lastUpdated ? "更新于 " + formatTime(lastUpdated) : "暂无更新时间";
+  if (footer) {
+    /* 版本号为空时整段不出现，避免只剩一个孤零零的 v */
+    var ver = appVersion ? (/^v/i.test(appVersion) ? appVersion : "v" + appVersion) : "";
+    footer.textContent = (lastUpdated ? "更新于 " + formatTime(lastUpdated) : "暂无更新时间") + (ver ? " · " + ver : "");
+  }
 
   var count = $("#heroCount");
   if (count) count.textContent = jobs.length + " 个岗位";
@@ -1569,24 +1624,38 @@ function tagsHTML(job) {
   return '<div class="job__tags">' + html + "</div>";
 }
 
+/* 招聘者活跃状态：唯一取用入口，空值一律折叠成 "" */
+function activityText(job) {
+  return job && typeof job.activeTimeDesc === "string" ? job.activeTimeDesc.trim() : "";
+}
+
+/* 职位描述正文：空白正文按「没有」处理，其余保留原始换行 */
+function jdText(job) {
+  if (!job || typeof job.description !== "string") return "";
+  return job.description.trim() ? job.description : "";
+}
+
 function metaHTML(job) {
   var parts = [];
   parts.push(cityText(job));
   if (job.experience) parts.push(job.experience);
   if (job.degree) parts.push(job.degree);
-  return '<div class="job__meta">' + parts.map(function (p, i) {
+  var html = parts.map(function (p, i) {
     return (i ? '<span class="dot">·</span>' : "") + "<span>" + esc(p) + "</span>";
-  }).join("") + "</div>";
+  }).join("");
+  var act = activityText(job);
+  if (act) {
+    html += '<span class="job__act" title="招聘者近期活跃状态">' + esc(act) + "</span>";
+  }
+  return '<div class="job__meta">' + html + "</div>";
 }
 
-/* timeFallbackHTML 处理「平台没给发布时间」的情况。
-   BOSS 的列表接口多数条目不带发布时间，但会带招聘者活跃状态（如「刚刚活跃」）。
-   与其留一句「发布时间未提供」，不如把已有的活跃状态显示出来——语义不同，
-   所以文案明确写成「招聘者…」，不冒充发布时间。 */
+/* timeFallbackHTML 只在「平台没给发布时间」时被调用。
+   招聘者活跃状态已改由 metaHTML 独立成徽标展示，这里不再拼「招聘者…」文案，
+   有活跃徽标时留一个空占位（保持卡片底部高度一致），两者都没有才写「发布时间未提供」。 */
 function timeFallbackHTML(job) {
-  var act = String(job.activeTimeDesc || "").trim();
-  if (act) {
-    return '<span class="job__time is-weak" title="平台未提供发布时间，这里显示招聘者最近活跃状态">招聘者' + esc(act) + "</span>";
+  if (activityText(job)) {
+    return '<span class="job__time is-weak" aria-hidden="true"></span>';
   }
   return '<span class="job__time is-weak" title="平台未提供发布时间">发布时间未提供</span>';
 }
@@ -1620,6 +1689,16 @@ function noteHTML(job) {
     + "</button>";
 }
 
+/* 职位描述入口：列表接口不返回 description，只有扩展回填后这里才会出现按钮 */
+function jdHTML(job) {
+  if (!jdText(job)) return "";
+  return '<div class="job__extra">'
+    + '<button class="job__jd" type="button" data-action="jd" data-id="' + esc(job.id) + '" title="查看完整职位描述">'
+    + '<svg class="i" aria-hidden="true"><use href="#i-note"></use></svg>'
+    + '<span class="job__jd-text">职位描述</span>'
+    + "</button></div>";
+}
+
 function cardHTML(job, index) {
   var delay = Math.min(index * 30, 240);
   var fav = isFavorite(job.id);
@@ -1646,6 +1725,7 @@ function cardHTML(job, index) {
     + stageSelectHTML(job)
     + link
     + "</div></div>"
+    + jdHTML(job)
     + noteHTML(job)
     + "</article>";
 }
@@ -1994,6 +2074,30 @@ function saveNote(event) {
 }
 
 /* =========================================================
+   职位描述面板（只读，正文一律 textContent 写入）
+   ========================================================= */
+function openJd(jobId) {
+  var modal = $("#jdModal");
+  if (!modal) return;
+  var job = jobs.filter(function (j) { return j.id === jobId; })[0];
+  var body = jdText(job);
+  if (!job || !body) return; /* 没有正文就不打开空弹窗 */
+  var head = $("#jdJob");
+  if (head) head.textContent = job.jobName + " · " + (job.brandName || "未知公司");
+  var box = $("#jdBody");
+  if (box) {
+    box.textContent = body; /* 纯文本写入，换行由 CSS pre-wrap 保留，杜绝 HTML 注入 */
+    box.scrollTop = 0;
+  }
+  modal.classList.add("is-open");
+}
+
+function closeJd() {
+  var modal = $("#jdModal");
+  if (modal) modal.classList.remove("is-open");
+}
+
+/* =========================================================
    状态变更
    ========================================================= */
 function toggleFavorite(jobId) {
@@ -2105,7 +2209,9 @@ function bindEvents() {
       var fav = e.target.closest('[data-action="fav"]');
       if (fav) { toggleFavorite(fav.dataset.id); return; }
       var note = e.target.closest('[data-action="note"]');
-      if (note) openNote(note.dataset.id);
+      if (note) { openNote(note.dataset.id); return; }
+      var jd = e.target.closest('[data-action="jd"]');
+      if (jd) openJd(jd.dataset.id);
     });
     jobList.addEventListener("change", function (e) {
       var sel = e.target.closest('select[data-action="stage"]');
@@ -2159,6 +2265,15 @@ function bindEvents() {
   var noteForm = $("#noteForm");
   if (noteForm) noteForm.addEventListener("submit", saveNote);
 
+  var jdModal = $("#jdModal");
+  if (jdModal) {
+    jdModal.addEventListener("click", function (e) {
+      if (e.target === jdModal) closeJd();
+    });
+  }
+  var jdClose = $("#jdClose");
+  if (jdClose) jdClose.addEventListener("click", closeJd);
+
   var fileInput = $("#fileInput");
   if (fileInput) {
     fileInput.addEventListener("change", function () {
@@ -2172,6 +2287,7 @@ function bindEvents() {
     if (e.key !== "Escape") return;
     closeCollect();
     closeNote();
+    closeJd();
   });
 }
 
