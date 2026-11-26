@@ -31,6 +31,14 @@ import (
 //go:embed platforms.json
 var builtinPlatforms []byte
 
+// builtinCityCodes 是 BOSS 直聘的完整城市码表（374 个城市）。
+//
+// 来源：https://github.com/eatmoreduck/boss-zhipin-scraper（MIT）的 data/city_codes.json，
+// 仅作城市名到城市码的静态映射，不含任何抓取逻辑。
+//
+//go:embed cities.json
+var builtinCityCodes []byte
+
 // builtinSource 是内置配置在错误信息中的展示名。
 const builtinSource = "内置 platforms.json"
 
@@ -130,6 +138,7 @@ func Load(path string) (*Config, error) {
 			p.ID = key
 		}
 		applyDefaults(p, cfg.Defaults)
+		mergeBuiltinCities(p)
 	}
 
 	return &cfg, nil
@@ -263,4 +272,32 @@ func lineCol(data []byte, offset int64) (int, int) {
 		col++
 	}
 	return line, col
+}
+
+// mergeBuiltinCities 把内置城市码表并入 BOSS 平台配置。
+//
+// 外部配置里显式声明的同名城市优先——允许使用者用 --config 覆盖个别城市码，
+// 而不需要把整张表抄一遍。
+func mergeBuiltinCities(p *Platform) {
+	if p == nil || p.ID != "boss" {
+		return
+	}
+	if len(builtinCityCodes) == 0 {
+		return
+	}
+	var table map[string]string
+	if err := json.Unmarshal(builtinCityCodes, &table); err != nil {
+		return
+	}
+	if p.Cities == nil {
+		p.Cities = make(map[string]string, len(table))
+	}
+	for name, code := range table {
+		if strings.TrimSpace(code) == "" {
+			continue
+		}
+		if _, exists := p.Cities[name]; !exists {
+			p.Cities[name] = code
+		}
+	}
 }

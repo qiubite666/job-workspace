@@ -724,7 +724,9 @@ svg{display:block}
       <div class="form-grid">
         <label class="form-row">
           <span>城市</span>
-          <select id="cCity"></select>
+          <input id="cCity" type="text" list="cCityOptions" autocomplete="off"
+                 placeholder="输入城市，如 呼和浩特" maxlength="20">
+          <datalist id="cCityOptions"></datalist>
         </label>
         <label class="form-row">
           <span>页数</span>
@@ -1745,14 +1747,13 @@ function cityList() {
 }
 
 function fillCollectCities() {
-  var sel = $("#cCity");
-  if (!sel) return;
-  var cities = cityList();
-  var current = sel.value;
-  sel.innerHTML = ['<option value="">全部城市</option>'].concat(
-    cities.map(function (c) { return '<option value="' + esc(c) + '">' + esc(c) + "</option>"; })
-  ).join("");
-  if (current && cities.indexOf(current) >= 0) sel.value = current;
+  var box = $("#cCityOptions");
+  if (!box) return;
+  // datalist 只做输入建议：用户可以直接敲表里没有的城市，
+  // 能不能查到由服务端的城市码表决定，不在这里拦截。
+  box.innerHTML = cityList().map(function (c) {
+    return '<option value="' + esc(c) + '"></option>';
+  }).join("");
 }
 
 /* =========================================================
