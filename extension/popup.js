@@ -125,11 +125,25 @@ async function testConnection() {
     var version = "";
     try {
       var info = JSON.parse(text);
-      if (info && info.version) version = "（version " + info.version + "）";
+      var bits = [];
+      if (info && info.version) bits.push("version " + info.version);
+      if (info && typeof info.jobCount === "number") bits.push("岗位 " + info.jobCount + " 条");
+      if (bits.length) version = "（" + bits.join("，") + "）";
     } catch (e) { /* 非 JSON 健康信息，忽略 */ }
 
-    if (response.ok) setStatus("连接成功：HTTP " + response.status + version);
-    else setStatus("服务可达，但返回 HTTP " + response.status + version, true);
+    if (response.ok) {
+      // 测试通过就顺手落盘：否则用户以为配好了，后台读取 storage 仍是空，
+      // 下一次上报会报「未配置服务端地址或 token」。
+      var token = els.token.value.trim();
+      if (token) {
+        await chrome.storage.local.set({ serverUrl: server, token: token });
+        setStatus("连接成功：HTTP " + response.status + version + "，配置已保存");
+      } else {
+        setStatus("连接成功：HTTP " + response.status + version + "，但 token 为空，请填写后点保存", true);
+      }
+    } else {
+      setStatus("服务可达，但返回 HTTP " + response.status + version, true);
+    }
   } catch (err) {
     if (err && err.name === "AbortError") setStatus("连接超时", true);
     else setStatus("连接失败：网络错误，或该主机未在 host_permissions 中", true);
