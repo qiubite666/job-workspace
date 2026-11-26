@@ -404,20 +404,12 @@ svg{display:block}
 .copy-btn:hover{background:rgba(0,0,0,.1);color:var(--text)}
 .btn--block{width:100%}
 
-/* ---------- 账号与保存状态 ---------- */
+/* ---------- 账号 ---------- */
 .account{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .user{
   font-size:13px;color:var(--muted);max-width:180px;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
 }
-.save-state{
-  display:inline-flex;align-items:center;gap:6px;
-  font-size:12px;color:var(--muted);white-space:nowrap;
-}
-.save-state::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--ok);flex:none}
-.save-state[data-status="saving"]::before{background:var(--primary);animation:pulse 1s var(--ease) infinite}
-.save-state[data-status="failed"]{color:var(--danger)}
-.save-state[data-status="failed"]::before{background:var(--danger)}
 
 /* ---------- 卡片备注 ---------- */
 .job__note{
@@ -492,7 +484,6 @@ svg{display:block}
   .account{width:100%;order:9;gap:6px;flex-wrap:nowrap}
   .account .btn{flex:none;padding:0 10px;font-size:13px}
   .account .user{flex:1 1 auto;min-width:0;max-width:none}
-  .save-state{flex:none}
 }
 
 @media (prefers-reduced-motion:reduce){
@@ -525,7 +516,6 @@ svg{display:block}
   <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8.5V12l2.5 1.5"/></symbol>
   <symbol id="i-logout" viewBox="0 0 24 24"><path d="M14 5H7a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h7"/><path d="M17 8.5 20.5 12 17 15.5"/><path d="M10 12h10"/></symbol>
   <symbol id="i-note" viewBox="0 0 24 24"><path d="M5 4.5h14v10l-4.5 5H5z"/><path d="M14.5 19.5v-5h5"/><path d="M8.5 9h7M8.5 12.5h4"/></symbol>
-  <symbol id="i-save" viewBox="0 0 24 24"><path d="M5 4.5h11l3 3v12H5z"/><path d="M8.5 4.5v5h6v-5"/><path d="M8 19.5V14h8v5.5"/></symbol>
   <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3.2 19 6v6c0 4-3 6.9-7 8.8-4-1.9-7-4.8-7-8.8V6z"/><path d="m9 12 2 2 4-4"/></symbol>
 </svg>
 
@@ -587,10 +577,6 @@ svg{display:block}
       </button>
       <div class="account">
         <span class="user" id="userName"></span>
-        <span class="save-state" id="saveState" data-status="saved">已保存</span>
-        <button class="btn btn--quiet btn--icon" type="button" data-action="save" aria-label="立即保存" title="立即保存">
-          <svg class="i" aria-hidden="true"><use href="#i-save"></use></svg><span class="btn__text">立即保存</span>
-        </button>
         <a class="btn btn--quiet btn--icon" href="/admin" id="adminLink" hidden aria-label="管理后台" title="管理后台">
           <svg class="i" aria-hidden="true"><use href="#i-shield"></use></svg><span class="btn__text">管理后台</span>
         </a>
@@ -658,10 +644,11 @@ svg{display:block}
         <svg class="i" aria-hidden="true"><use href="#i-search"></use></svg>
         <input id="q" type="search" placeholder="搜索职位、公司、技能" autocomplete="off" aria-label="搜索职位、公司、技能">
       </label>
-      <label class="field field--select">
-        <select id="fCity" aria-label="城市筛选"></select>
-        <svg class="i field__caret" aria-hidden="true"><use href="#i-caret"></use></svg>
+      <label class="field">
+        <svg class="i" aria-hidden="true"><use href="#i-search"></use></svg>
+        <input id="fCity" type="text" list="cityOptions" autocomplete="off" placeholder="输入城市筛选" aria-label="输入城市筛选">
       </label>
+      <datalist id="cityOptions"></datalist>
       <label class="field field--select">
         <select id="fSalary" aria-label="薪资筛选">
           <option value="all">不限薪资</option>
@@ -1203,20 +1190,19 @@ async function loadPlatforms() {
 }
 
 /* =========================================================
-   云端保存：800ms 防抖 + 立即保存 + 失败重试
+   云端保存：800ms 防抖 + 失败重试
    ========================================================= */
 function scheduleSave() {
   if (!auth.user) return;
   save.status = "saving";
-  renderSaveState();
   window.clearTimeout(save.timer);
   save.timer = window.setTimeout(function () {
     save.timer = 0;
-    flushSave(false);
+    flushSave();
   }, 800);
 }
 
-async function flushSave(manual) {
+async function flushSave() {
   if (!auth.user) return;
   window.clearTimeout(save.timer);
   save.timer = 0;
@@ -1228,7 +1214,6 @@ async function flushSave(manual) {
 
   save.inflight = true;
   save.status = "saving";
-  renderSaveState();
 
   /* 提交前必须成功读取后端状态；失败则拒绝写入，避免覆盖云端 */
   if (!save.loaded) {
@@ -1237,7 +1222,6 @@ async function flushSave(manual) {
     if (!loaded) {
       save.inflight = false;
       save.status = "failed";
-      renderSaveState();
       showToast("云端进度读取失败，暂不能保存，请稍后重试", true);
       return;
     }
@@ -1257,9 +1241,8 @@ async function flushSave(manual) {
     writeStateCache();
   } else {
     save.status = "failed";
-    showToast("保存失败，改动已保留，可点「立即保存」重试", true);
+    showToast("保存失败，改动已保留，稍后会自动重试", true);
   }
-  renderSaveState();
 
   if (save.again) {
     save.again = false;
@@ -1311,9 +1294,46 @@ function expBucket(exp) {
   return "unknown";
 }
 
+/* 城市文本：所有展示、筛选、统计统一走这里，避免各处各写一套
+   基础城市回退链：cityName → location 首段 → areaDistrict → businessDistrict → "城市未知"
+   完整层级：城市 · 区 · 商圈，缺失项自动省略，重复项去重 */
+function locationSegments(location) {
+  if (typeof location !== "string") return [];
+  return location.split(/[·•・\/]/).map(function (s) { return s.trim(); }).filter(function (s) { return !!s; });
+}
+
+function cityBase(job) {
+  if (!job || typeof job !== "object") return "城市未知";
+  var segs = locationSegments(job.location);
+  var candidates = [job.cityName, segs[0], job.areaDistrict, job.businessDistrict];
+  for (var i = 0; i < candidates.length; i++) {
+    if (typeof candidates[i] === "string" && candidates[i].trim()) return candidates[i].trim();
+  }
+  return "城市未知";
+}
+
+function cityText(job) {
+  var base = cityBase(job);
+  var parts = [base];
+  function push(v) {
+    if (typeof v !== "string") return;
+    var s = v.trim();
+    if (!s || parts.indexOf(s) >= 0) return;
+    parts.push(s);
+  }
+  if (job && typeof job === "object") {
+    push(job.areaDistrict);
+    push(job.businessDistrict);
+    /* location 已用 · 分隔时按分段补齐层级；单段视为整段地址，不重复拼接 */
+    var segs = locationSegments(job.location);
+    if (segs.length > 1) segs.forEach(push);
+  }
+  return parts.slice(0, 3).join(" · ");
+}
+
 function filterJobs(list, filters) {
   var keyword = String(filters.keyword || "").trim().toLowerCase();
-  var city = String(filters.city || "").trim();
+  var city = String(filters.city || "").trim().toLowerCase();
   var salary = filters.salary || "all";
   var exp = filters.exp || "all";
 
@@ -1324,7 +1344,11 @@ function filterJobs(list, filters) {
         .join(" ").toLowerCase();
       if (hay.indexOf(keyword) < 0) return false;
     }
-    if (city && job.cityName !== city) return false;
+    if (city) {
+      var cityHay = [cityText(job), job.cityName, job.areaDistrict, job.businessDistrict, job.location]
+        .join(" ").toLowerCase();
+      if (cityHay.indexOf(city) < 0) return false;
+    }
     if (salary !== "all" && salaryBucket(job) !== salary) return false;
     if (exp !== "all" && expBucket(job.experience) !== exp) return false;
     return true;
@@ -1423,15 +1447,6 @@ function renderShell() {
   if (admin) admin.hidden = auth.user.role !== "admin";
 }
 
-function renderSaveState() {
-  var el = $("#saveState");
-  if (!el) return;
-  var labels = { saved: "已保存", saving: "保存中", failed: "保存失败" };
-  el.dataset.status = save.status;
-  el.textContent = labels[save.status] || "已保存";
-  el.title = save.status === "failed" ? "保存失败，点「立即保存」重试" : "";
-}
-
 function renderHeader() {
   var badge = $("#sourceBadge");
   if (badge) {
@@ -1469,17 +1484,18 @@ function renderHeader() {
 
   /* 同步工具条控件值（唯一入口，避免事件回写 DOM） */
   var cities = cityList();
-  var citySel = $("#fCity");
-  if (citySel) {
+  var cityOptions = $("#cityOptions");
+  if (cityOptions) {
     var sig = cities.join("|");
-    if (citySel.dataset.sig !== sig) {
-      citySel.innerHTML = ['<option value="">全部城市</option>'].concat(
-        cities.map(function (c) { return '<option value="' + esc(c) + '">' + esc(c) + "</option>"; })
-      ).join("");
-      citySel.dataset.sig = sig;
+    if (cityOptions.dataset.sig !== sig) {
+      cityOptions.innerHTML = cities.map(function (c) {
+        return '<option value="' + esc(c) + '"></option>';
+      }).join("");
+      cityOptions.dataset.sig = sig;
     }
-    if (citySel.value !== ui.city) citySel.value = ui.city;
   }
+  var cityInput = $("#fCity");
+  if (cityInput && document.activeElement !== cityInput && cityInput.value !== ui.city) cityInput.value = ui.city;
 
   var qEl = $("#q");
   if (qEl && document.activeElement !== qEl && qEl.value !== ui.keyword) qEl.value = ui.keyword;
@@ -1539,11 +1555,9 @@ function tagsHTML(job) {
 
 function metaHTML(job) {
   var parts = [];
-  if (job.location) parts.push(job.location);
-  else if (job.cityName) parts.push(job.cityName + (job.areaDistrict ? "·" + job.areaDistrict : ""));
+  parts.push(cityText(job));
   if (job.experience) parts.push(job.experience);
   if (job.degree) parts.push(job.degree);
-  if (!parts.length) return "";
   return '<div class="job__meta">' + parts.map(function (p, i) {
     return (i ? '<span class="dot">·</span>' : "") + "<span>" + esc(p) + "</span>";
   }).join("") + "</div>";
@@ -1703,7 +1717,6 @@ function renderCollect(result) {
 function refreshAll() {
   renderShell();
   if (!auth.user) return;
-  renderSaveState();
   renderHeader();
   renderStats();
   renderList();
@@ -1711,7 +1724,7 @@ function refreshAll() {
 }
 
 /* =========================================================
-   城市下拉数据
+   城市候选数据（筛选 datalist 与采集下拉共用）
    ========================================================= */
 function cityList() {
   var seen = {};
@@ -1719,11 +1732,11 @@ function cityList() {
   function push(city) {
     if (typeof city !== "string") return;
     var c = city.trim();
-    if (!c || seen[c]) return;
+    if (!c || c === "城市未知" || seen[c]) return;
     seen[c] = true;
     out.push(c);
   }
-  jobs.forEach(function (j) { push(j.cityName); });
+  jobs.forEach(function (j) { push(cityBase(j)); });
   platformCache.forEach(function (p) {
     (p.cities || []).forEach(push);
   });
@@ -1935,7 +1948,7 @@ function saveNote(event) {
   closeNote();
   refreshAll();
   scheduleSave();
-  showToast(text ? "备注已保存" : "备注已清空");
+  showToast(text ? "备注已更新" : "备注已清空");
 }
 
 /* =========================================================
@@ -2004,7 +2017,6 @@ function bindEvents() {
       if (action === "export") exportJSON();
       else if (action === "import") $("#fileInput").click();
       else if (action === "collect") openCollect();
-      else if (action === "save") flushSave(true);
       else if (action === "logout") doLogout();
     });
   }
@@ -2020,15 +2032,16 @@ function bindEvents() {
   var filters = $("#filters");
   if (filters) {
     filters.addEventListener("input", function (e) {
-      if (e.target.id !== "q") return;
-      ui.keyword = e.target.value;
+      var id = e.target.id;
+      if (id === "q") ui.keyword = e.target.value;
+      else if (id === "fCity") ui.city = e.target.value;
+      else return;
       visibleCount = PAGE_SIZE;
       refreshAll();
     });
     filters.addEventListener("change", function (e) {
       var id = e.target.id;
-      if (id === "fCity") ui.city = e.target.value;
-      else if (id === "fSalary") ui.salary = e.target.value;
+      if (id === "fSalary") ui.salary = e.target.value;
       else if (id === "fExp") ui.exp = e.target.value;
       else if (id === "fSort") ui.sort = e.target.value;
       else return;
