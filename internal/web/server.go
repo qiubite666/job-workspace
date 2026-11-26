@@ -66,6 +66,17 @@ type Server struct {
 	// 用户落盘在 <data>/users.json，会话仅存内存（进程重启即失效）。
 	users    *auth.UserStore
 	sessions *auth.SessionManager
+
+	// cookieFile 是登录态 cookie 的文件路径（可为空）。
+	// 只存路径不存值：采集子进程自己读文件，避免凭据出现在命令行参数里。
+	cookieFile string
+}
+
+// SetCookieFile 设置采集子进程使用的 cookie 文件路径。
+//
+// 传入空字符串表示不启用；文件不存在或不可读时，采集会按「无登录态」处理并返回 AUTH_REQUIRED。
+func (s *Server) SetCookieFile(path string) {
+	s.cookieFile = strings.TrimSpace(path)
 }
 
 // sessionTTL 是登录会话的有效期；剩余不足一半时会自动续期。
@@ -331,6 +342,9 @@ func (s *Server) handleCollect(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.AllowDisallowed {
 		args = append(args, "--allow-disallowed")
+	}
+	if s.cookieFile != "" {
+		args = append(args, "--cookie-file="+s.cookieFile)
 	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), collectTimeout)

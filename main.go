@@ -154,7 +154,8 @@ func runCollect(args []string) int {
 		platformsF = fs.String("platforms", "", "限定平台，逗号分隔，如 boss,liepin")
 		mode       = fs.String("mode", pipeline.ModeSample, "采集模式：sample|local|live")
 		file       = fs.String("file", "", "mode=local 时的原始响应文件路径")
-		cookie     = fs.String("cookie", "", "登录态 cookie（可用 BOSS_COOKIE 环境变量代替）")
+		cookie     = fs.String("cookie", "", "登录态 cookie（优先级最高，但会留在 shell 历史里，不推荐）")
+		cookieFile = fs.String("cookie-file", "", "从文件读取登录态 cookie，推荐用于部署（0600 权限，避免进环境变量）")
 		allow      = fs.Bool("allow-disallowed", false, "显式放行 robots.txt 禁止的路径")
 		out        = fs.String("out", "data/jobs.json", "岗位数据输出路径")
 		asJSON     = fs.Bool("json", false, "以 JSON 输出结果到 stdout")
@@ -180,7 +181,22 @@ func runCollect(args []string) int {
 		return 1
 	}
 
+	// cookie 取值优先级：--cookie > --cookie-file > 环境变量 BOSS_COOKIE。
+	// 部署场景推荐 --cookie-file：凭据不进入 systemd 的 EnvironmentFile（省掉引号与分号解析的坑），
+	// 也不会出现在 /proc/<pid>/environ 与 systemctl show 里。
 	cookieValue := strings.TrimSpace(*cookie)
+	if cookieValue == "" && strings.TrimSpace(*cookieFile) != "" {
+		b, err := os.ReadFile(strings.TrimSpace(*cookieFile))
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "读取 cookie 文件失败: %v\n", err)
+			return 1
+		}
+		cookieValue = strings.TrimSpace(string(b))
+		if cookieValue == "" {
+			fmt.Fprintf(os.Stderr, "cookie 文件为空: %s\n", *cookieFile)
+			return 1
+		}
+	}
 	if cookieValue == "" {
 		cookieValue = strings.TrimSpace(os.Getenv("BOSS_COOKIE"))
 	}
@@ -346,6 +362,7 @@ func runServe(args []string) int {
 	addr := fs.String("addr", defaultAddr, "监听地址，建议保持 127.0.0.1")
 	configPath := fs.String("config", "", "外部配置文件路径，空则用内置配置")
 	dataDir := fs.String("data", "data", "数据目录（岗位、后台账号、采集报告都落在这里）")
+	cookieFile := fs.String("cookie-file", "", "登录态 cookie 文件路径；后台触发的采集会读取它")
 	quiet := fs.Bool("quiet", false, "只输出错误")
 	if err := fs.Parse(args); err != nil {
 		return 1
@@ -360,6 +377,8 @@ func runServe(args []string) int {
 	catalog.Build(cfg)
 
 	srv := web.New(cfg, store.New(*dataDir), logger)
+	// 采集子进程需要同一份凭据来源；这里只传路径，cookie 值不进命令行。
+	srv.SetCookieFile(strings.TrimSpace(*cookieFile))
 	if err := srv.Run(*addr); err != nil {
 		fmt.Fprintf(os.Stderr, "服务启动失败：%v\n", err)
 		return 1

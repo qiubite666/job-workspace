@@ -158,19 +158,42 @@ jobworkspace collect [flags]
   --platforms a,b         仅跑指定平台
   --mode sample|local|live  默认 sample
   --file <path>           local 模式的原始响应文件
-  --cookie <str>          live 模式登录态（也读 BOSS_COOKIE）
+  --cookie <str>          live 模式登录态（也会读 --cookie-file 与 BOSS_COOKIE）
+  --cookie-file <path>    从文件读取登录态 cookie，部署场景推荐
   --allow-disallowed      显式放行 robots 禁止路径
   --out <path>            默认 data/jobs.json
   --config <path>         外部配置，默认用内嵌 platforms.json
   --json                  以 JSON 输出摘要
   --quiet                 只输出错误
 
-jobworkspace serve  [--addr 127.0.0.1:8787]
+jobworkspace serve  [--addr 127.0.0.1:8787] [--data data] [--cookie-file <path>]
 jobworkspace platforms
 jobworkspace doctor
+jobworkspace user   add|list|passwd|delete
 ```
 
 退出码：`0` 成功 / `1` 参数或配置错误 / `2` 全部平台失败 / `3` 部分平台失败。
+
+### 登录态 cookie 的三种来源
+
+优先级：`--cookie` > `--cookie-file` > 环境变量 `BOSS_COOKIE`。
+
+| 方式 | 适用 | 注意 |
+|---|---|---|
+| `--cookie-file /path/boss.cookie` | **部署推荐** | 文件内容就是整行 Cookie 值（`k=v; k2=v2`），权限 0600；不进入环境变量，也不会出现在命令行、`ps`、`/proc/<pid>/environ` |
+| 环境变量 `BOSS_COOKIE` | 临时本机使用 | 注意 shell 历史与 `systemctl show -p Environment` 都可能暴露 |
+| `--cookie` 直传 | 仅调试 | 会留在 shell 历史里 |
+
+cookie 形如单行：
+
+```
+lastCity=101080100; ab_guid=...; wt2=...; zp_at=...; __zp_stoken__=...; bst=...; __c=...; __a=...
+```
+
+即从浏览器 DevTools「Network → 请求头 → cookie」整行复制，不要加 `Cookie:` 前缀，不要加引号，不要拆成多行。
+
+**有效期**：`wt2` / `zp_at` / `bst` 通常数天到数周，`__zp_stoken__` 是短周期令牌（由站点 JS 计算并刷新，小时级到天级）。
+服务端**无法自动续期**——续期依赖站点自身的 JS SDK，只有在浏览器环境里才会发生。失效后采集会返回 `AUTH_REQUIRED`，需要重新导出 cookie。
 
 ---
 

@@ -11,9 +11,13 @@ User=ops
 Group=ops
 
 WorkingDirectory=/home/ops/service/job-workspace
-# 可选环境变量文件（BOSS_COOKIE 等），不存在时忽略
+# 可选环境变量文件（cookie 等），不存在时忽略。
+# 但 cookie 更推荐用 --cookie-file：环境变量会经过 systemd 的引号/分号解析
+# （cookie 里恰好有 ; 和 %），且会出现在 systemctl show -p Environment 中。
 EnvironmentFile=-/home/ops/service/job-workspace/env
 
+# 若使用 cookie 文件，在下面这行追加：
+#   --cookie-file=/home/ops/service/job-workspace/boss.cookie
 ExecStart=/home/ops/service/job-workspace/jobworkspace serve --addr=127.0.0.1:8787
 Restart=on-failure
 RestartSec=3s
