@@ -625,7 +625,8 @@ function esc(value) {
 
 function pad2(n) { return n < 10 ? "0" + n : String(n); }
 
-function setText(sel, text) {  var el = $(sel);
+function setText(sel, text) {
+  var el = $(sel);
   if (el) el.textContent = text === null || text === undefined ? "" : String(text);
 }
 
