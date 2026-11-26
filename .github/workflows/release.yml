@@ -1,6 +1,6 @@
 name: release
 
-# 推送到 v* 标签即构建 Linux 单二进制并发布 Release（附校验和）。
+# 推送到 v* 标签即构建 Linux / Windows 单二进制并发布 Release（附校验和与分类变更日志）。
 # 使用 Runner 自带的 GITHUB_TOKEN，无需在仓库里配置任何密钥。
 
 on:
@@ -22,6 +22,7 @@ jobs:
       - name: 检出代码
         uses: actions/checkout@v4
         with:
+          # 变更日志要按 tag 区间遍历历史，必须取全量历史与标签
           fetch-depth: 0
 
       - name: 安装 Go
@@ -46,10 +47,15 @@ jobs:
           # 用法行与 /api/health 里的 v 由程序自己输出，避免出现 vv1.1.0。
           VER="${TAG#v}"
           mkdir -p dist
-          for target in linux/amd64 linux/arm64; do
+          # 构建目标：linux/amd64、linux/arm64、windows/amd64
+          # Windows 产物必须带 .exe 后缀，否则下载后无法直接运行。
+          for target in linux/amd64 linux/arm64 windows/amd64; do
             os="${target%/*}"
             arch="${target#*/}"
             out="dist/jobworkspace-${os}-${arch}"
+            if [ "$os" = "windows" ]; then
+              out="${out}.exe"
+            fi
             echo "==> ${out}"
             CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" \
               go build -trimpath \
@@ -57,6 +63,7 @@ jobs:
                 -o "$out" .
           done
           cd dist
+          # 校验和覆盖全部三个产物（含 .exe）
           sha256sum jobworkspace-* > sha256sums.txt
           cat sha256sums.txt
 
@@ -65,7 +72,17 @@ jobs:
           set -euo pipefail
           chmod +x dist/jobworkspace-linux-amd64
           ./dist/jobworkspace-linux-amd64 platforms
-          ./dist/jobworkspace-linux-amd64 collect --mode=sample --query=Java --json | head -c 200
+          # V2 起采集只剩联网模式，不再有 --mode/--file；
+          # CI 里不发真实网络请求，只校验子命令与关键参数仍然可用。
+          ./dist/jobworkspace-linux-amd64 collect --help | grep -q -- '--allow-disallowed'
+
+      - name: 生成变更日志
+        run: |
+          set -euo pipefail
+          chmod +x scripts/release-notes.sh
+          bash scripts/release-notes.sh --tag "${GITHUB_REF_NAME}" > release-notes.md
+          echo "----- release-notes.md -----"
+          cat release-notes.md
 
       - name: 发布 Release
         env:
@@ -74,5 +91,5 @@ jobs:
           set -euo pipefail
           gh release create "${GITHUB_REF_NAME}" dist/* \
             --title "${GITHUB_REF_NAME}" \
-            --generate-notes \
+            --notes-file release-notes.md \
             --verify-tag

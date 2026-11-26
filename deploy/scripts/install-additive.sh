@@ -10,7 +10,9 @@
 # 用法：
 #   ./install-additive.sh --binary ./dist/jobworkspace-linux-amd64 [--dry-run]
 #   ./install-additive.sh --binary ... --server-name job2.qiubite.fun --conf-suffix 20261126
-#   ./install-additive.sh --binary ... --no-auth      # 不加 Basic Auth（公网裸奔，慎用）
+#
+# 鉴权说明：整站由应用层登录保护（首页与 /admin 共用同一会话），
+# nginx 不再配置 Basic Auth，因此本脚本也不再生成 htpasswd。
 #
 set -euo pipefail
 
@@ -19,13 +21,11 @@ BIN_NAME="jobworkspace"
 SERVER_NAME="job.qiubite.fun"
 CONF_NAME="job-workspace.conf"
 UNIT_NAME="job-workspace.service"
-AUTH_FILE="/etc/nginx/job-workspace.htpasswd"
 SVC_USER="ops"
 LISTEN_PORT="8787"
 
 BINARY=""
 DRY_RUN=0
-USE_AUTH=1
 DO_NGINX=1
 DO_SYSTEMD=1
 
@@ -40,11 +40,10 @@ while [ $# -gt 0 ]; do
     --server-name) SERVER_NAME="${2:-}"; shift 2 ;;
     --conf-suffix) CONF_NAME="job-workspace-${2:-}.conf"; shift 2 ;;
     --user)        SVC_USER="${2:-}"; shift 2 ;;
-    --no-auth)     USE_AUTH=0; shift ;;
     --skip-nginx)  DO_NGINX=0; shift ;;
     --skip-systemd) DO_SYSTEMD=0; shift ;;
     --dry-run)     DRY_RUN=1; shift ;;
-    -h|--help)     sed -n '2,20p' "$0"; exit 0 ;;
+    -h|--help)     sed -n '2,22p' "$0"; exit 0 ;;
     *) die "未知参数：$1" ;;
   esac
 done
@@ -122,7 +121,6 @@ ok "端口 ${LISTEN_PORT} 空闲"
 if [ "$DRY_RUN" -eq 1 ]; then
   log "干跑结束，未做任何改动"
   printf '将新增：\n  %s\n  %s\n  %s\n' "$BIN_PATH" "$CONF_PATH" "$UNIT_PATH"
-  [ "$USE_AUTH" -eq 1 ] && printf '  %s\n' "$AUTH_FILE"
   exit 0
 fi
 
@@ -164,27 +162,6 @@ if [ "$DO_NGINX" -eq 1 ]; then
   sed -e "s#server_name job\.qiubite\.fun;#server_name ${SERVER_NAME};#g" \
       "$SRC_CONF" > "$CONF_PATH"
   chmod 644 "$CONF_PATH"
-
-  if [ "$USE_AUTH" -eq 1 ]; then
-    if [ -e "$AUTH_FILE" ]; then
-      warn "已存在 $AUTH_FILE，保留原文件不覆盖，沿用旧凭据"
-    else
-      PASS="$(openssl rand -base64 18 | tr -dc 'A-Za-z0-9' | cut -c1-16)"
-      printf '%s:%s\n' "$SVC_USER" "$(openssl passwd -apr1 "$PASS")" > "$AUTH_FILE"
-      chmod 640 "$AUTH_FILE"
-      GRP="www-data"; getent group "$GRP" >/dev/null 2>&1 || GRP="root"
-      chown "root:${GRP}" "$AUTH_FILE"
-      ok "$AUTH_FILE"
-      printf '\n\033[1;33m  Basic Auth 凭据（仅显示一次，请立即保存）\033[0m\n  用户名: %s\n  密码:   %s\n\n' "$SVC_USER" "$PASS"
-      PASS=""
-    fi
-  else
-    # 未启用鉴权时，把 auth_basic 两行注释掉，避免 configtest 因缺文件失败
-    sed -i.bak -e 's#^\(\s*\)auth_basic#\1\# auth_basic#' \
-               -e 's#^\(\s*\)auth_basic_user_file#\1\# auth_basic_user_file#' "$CONF_PATH"
-    rm -f "${CONF_PATH}.bak"
-    warn "已按要求关闭访问控制——该站点将裸露在公网"
-  fi
   ok "$CONF_PATH"
 
   log "校验 nginx 配置"
@@ -205,8 +182,9 @@ curl -fsS -m 5 "http://127.0.0.1:${LISTEN_PORT}/api/health" && echo
 ok "本机 8787 健康检查通过"
 
 if [ "$DO_NGINX" -eq 1 ]; then
+  # 首页是公开的静态外壳，200 即说明 TLS 与反代链路正常
   curl -kfsS -m 8 -o /dev/null -w "  https 状态码: %{http_code}\n" "https://${SERVER_NAME}/" \
-    || warn "公网访问未通过（可能是 DNS 未解析到本机，或 Basic Auth 返回 401——401 属正常）"
+    || warn "公网访问未通过（可能是 DNS 未解析到本机，或证书与域名不匹配）"
 fi
 
 log "完成。未删除、未覆盖任何既有文件。"

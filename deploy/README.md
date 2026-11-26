@@ -14,7 +14,6 @@
 | 可选环境变量 | `/home/ops/service/job-workspace/env` | 可选新增（0600） |
 | systemd 单元 | `/etc/systemd/system/job-workspace.service` | 新增 |
 | nginx 站点 | `/etc/nginx/sites-enabled/job-workspace.conf` | 新增 |
-| Basic Auth | `/etc/nginx/job-workspace.htpasswd` | 新增（0640，`root:www-data`） |
 | 证书 | `/etc/nginx/cert/qiubite.fun.crt` `/etc/nginx/cert/qiubite.fun.key` | **只读引用，不改动** |
 
 ---
@@ -26,7 +25,6 @@
 | 二进制 | 是 | **中止**。改用 `jobworkspace-<日期>`，并在**新建**的 systemd 单元里引用（旧单元不动） |
 | nginx 站点 | 是 | **中止**。加 `--conf-suffix <日期>` 生成 `job-workspace-<日期>.conf`（nginx 会一并加载） |
 | systemd 单元 | 是 | **中止**。新建 `job-workspace-v2.service` + 独立端口（两个单元不能抢同一端口） |
-| htpasswd | 是 | **不覆盖**，保留既有凭据并告警（旧密码继续有效） |
 | `data/` 目录 | 是 | 复用，脚本不做任何清理 |
 | 证书 | 是 | 只读；只做 SAN 覆盖校验，绝不重写 |
 
@@ -79,7 +77,6 @@ ssh ops@<host> 'sudo /tmp/install-additive.sh --binary /tmp/jobworkspace-linux-a
 | `--server-name job2.qiubite.fun` | 换域名（需证书覆盖） |
 | `--conf-suffix 20261126` | 站点配置改名，避开同名冲突 |
 | `--user www` | 换运行用户（默认 `ops`） |
-| `--no-auth` | 关闭 Basic Auth（**公网裸奔，不建议**） |
 | `--skip-nginx` / `--skip-systemd` | 只做其中一部分 |
 
 ---
@@ -89,11 +86,11 @@ ssh ops@<host> 'sudo /tmp/install-additive.sh --binary /tmp/jobworkspace-linux-a
 ```bash
 systemctl status job-workspace --no-pager
 curl -fsS http://127.0.0.1:8787/api/health
-curl -kI https://job.qiubite.fun/            # 期望 401（鉴权生效）或 200
+curl -kI https://job.qiubite.fun/            # 期望 200（公开的静态外壳）
 journalctl -u job-workspace -n 50 --no-pager
 ```
 
-浏览器打开 `https://job.qiubite.fun/`，用脚本输出的用户名/密码登录。
+浏览器打开 `https://job.qiubite.fun/`，首次访问会看到登录卡片；账号由下面的 `user add` 创建。
 
 ---
 
@@ -108,12 +105,9 @@ systemctl daemon-reload && nginx -t && nginx -s reload
 # 应用目录按需保留（内含 data/jobs.json）
 ```
 
-`--no-auth` 场景下脚本会给站点配置打临时 `.bak` 再删除，同样只作用于自己刚写的文件。
-
 ---
 
 ## 7. 关于「只增不改」与后续升级
-
 本次是首次部署，所有文件都不存在，天然满足约束。但**升级必然会覆盖二进制与单元文件**，
 这一步无法在「不覆盖」前提下完成。升级时需要你显式授权其中之一：
 
@@ -127,16 +121,17 @@ systemctl daemon-reload && nginx -t && nginx -s reload
 ## 8. 安全须知
 
 - 服务只监听 `127.0.0.1:8787`，对外仅经 nginx。
-- **两层鉴权，职责不同**，建议都保留：
-  - **nginx Basic Auth**（本配置默认开启）：在网络层挡住未授权访问，连登录页都看不到；
-  - **应用内登录**（`/admin`，v1.1.0 起）：区分 `admin` / `viewer`，控制增删改权限。
-- 应用内没有账号体系时的暴露风险：`/api/collect` 会真实发起对招聘平台的请求，
-  被滥用会牵连服务器 IP。v1.1.0 起该接口已要求登录，但仍建议叠加 Basic Auth 或 IP 白名单。
-- 只想自己用时，把 `auth_basic` 两行换成 IP 白名单（仍只改本文件）：
+- **整站由应用登录保护**：首页与 `/admin` 共用同一会话，登录一次即可，无需二次认证；
+  数据接口全部要求登录，未登录返回 401，`/api/health` 保持公开供监控探活。
+- nginx 只负责 TLS 与反向代理，不再配置 Basic Auth；`/` 与 `/admin` 仍是公开的静态外壳
+  （不含任何数据），未登录时由前端展示登录卡片。
+- 只想自己用时，可在站点配置里加 IP 白名单作为**可选**加固（只改本文件）：
   ```nginx
   allow 1.2.3.4;
   deny  all;
   ```
+- `/api/collect` 会真实发起对招聘平台的请求，被滥用会牵连服务器 IP；该接口已要求登录，
+  必要时再叠加 IP 白名单。
 - 部署后先创建管理员，否则后台无法登录：
   ```bash
   sudo -u ops /home/ops/service/job-workspace/jobworkspace user add --username admin
