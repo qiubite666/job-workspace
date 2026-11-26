@@ -109,3 +109,61 @@ func TestUpsertDetailsInsertsUnknown(t *testing.T) {
 		t.Fatalf("期望 updated=0 added=1 total=1，实际 %d/%d/%d", updated, added, total)
 	}
 }
+
+// TestUpsertDetailsConsecutiveReports 连续两次详情上报，第二次必须能更新 JD。
+//
+// 这是方向写反时唯一能暴露的用例：只报一次详情时，新记录本来就带着 JD，
+// 无论合并方向对错都看不出问题。
+func TestUpsertDetailsConsecutiveReports(t *testing.T) {
+	st := New(t.TempDir())
+
+	list := newTestJob("boss:3", "3")
+	if _, _, err := st.MergeAndSave([]model.Job{list}); err != nil {
+		t.Fatalf("首次落库失败: %v", err)
+	}
+
+	first := model.Job{ID: "boss:3", Platform: "boss", ExternalID: "3", Description: "第一版 JD"}
+	if _, _, _, err := st.UpsertDetails([]model.Job{first}); err != nil {
+		t.Fatalf("第一次详情落库失败: %v", err)
+	}
+
+	second := model.Job{ID: "boss:3", Platform: "boss", ExternalID: "3", Description: "第二版 JD"}
+	updated, added, _, err := st.UpsertDetails([]model.Job{second})
+	if err != nil {
+		t.Fatalf("第二次详情落库失败: %v", err)
+	}
+	if updated != 1 || added != 0 {
+		t.Fatalf("第二次应命中已有记录: updated=%d added=%d", updated, added)
+	}
+
+	jobs, _, _ := st.LoadJobs()
+	if jobs[0].Description != "第二版 JD" {
+		t.Errorf("JD 未更新，说明合并方向写反了: %q", jobs[0].Description)
+	}
+}
+
+// TestUpsertDetailsKeepsListCity 详情包不得覆盖列表给出的城市。
+func TestUpsertDetailsKeepsListCity(t *testing.T) {
+	st := New(t.TempDir())
+
+	list := newTestJob("boss:4", "4")
+	list.CityName = "呼和浩特"
+	list.Location = "呼和浩特·赛罕区"
+	if _, _, err := st.MergeAndSave([]model.Job{list}); err != nil {
+		t.Fatalf("首次落库失败: %v", err)
+	}
+
+	detail := model.Job{ID: "boss:4", Platform: "boss", ExternalID: "4",
+		CityName: "北京", Description: "JD"}
+	if _, _, _, err := st.UpsertDetails([]model.Job{detail}); err != nil {
+		t.Fatalf("详情落库失败: %v", err)
+	}
+
+	jobs, _, _ := st.LoadJobs()
+	if jobs[0].CityName != "呼和浩特" {
+		t.Errorf("城市被详情包覆盖: %q", jobs[0].CityName)
+	}
+	if jobs[0].Description != "JD" {
+		t.Errorf("JD 未写入: %q", jobs[0].Description)
+	}
+}

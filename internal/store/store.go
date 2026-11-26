@@ -317,8 +317,8 @@ func (s *Store) UpsertDetails(incoming []model.Job) (updated, added, total int, 
 
 	for _, j := range incoming {
 		if pos, ok := index[j.ID]; ok {
-			// 已有记录为底，详情里的非空值覆盖上去。
-			merged[pos] = mergePreserving(j, merged[pos])
+			// 只覆盖详情专属字段，其余沿用库里（不能反向整条覆盖）。
+			merged[pos] = mergeDetailFields(merged[pos], j)
 			updated++
 			continue
 		}
@@ -331,4 +331,34 @@ func (s *Store) UpsertDetails(incoming []model.Job) (updated, added, total int, 
 		return 0, 0, 0, err
 	}
 	return updated, added, len(merged), nil
+}
+
+// mergeDetailFields 把详情包合并进已有记录：只覆盖详情专属字段，其余沿用库里。
+//
+// 刻意不复用 mergePreserving：那个函数对城市/商圈/地点也做兜底，
+// 而详情包的 CityName 可能来自请求参数兜底值，方向一旦反过来就会把
+// 列表里正确的城市覆盖掉。这里只碰详情接口真正权威的六个字段。
+func mergeDetailFields(stored, detail model.Job) model.Job {
+	out := stored
+
+	if v := strings.TrimSpace(detail.Description); v != "" {
+		out.Description = v
+	}
+	if v := strings.TrimSpace(detail.ActiveTimeDesc); v != "" {
+		out.ActiveTimeDesc = v
+	}
+	if v := strings.TrimSpace(detail.BossName); v != "" {
+		out.BossName = v
+	}
+	if v := strings.TrimSpace(detail.BossTitle); v != "" {
+		out.BossTitle = v
+	}
+	if v := strings.TrimSpace(detail.PublishedAt); v != "" {
+		out.PublishedAt = v
+		if src := strings.TrimSpace(detail.PublishedAtSource); src != "" {
+			out.PublishedAtSource = src
+		}
+	}
+
+	return out
 }

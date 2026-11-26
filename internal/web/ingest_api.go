@@ -324,6 +324,11 @@ func (s *Server) ingestDetail(
 		draft.CityName = strings.TrimSpace(req.City)
 	}
 	job := mapping.Finalize(draft, spec, ctx)
+	// 详情包自带发布时间时，标记来源为 detail——否则会被误标成 api，
+	// 排查时看不出这条时间是列表给的还是点开详情补的。
+	if strings.TrimSpace(job.PublishedAt) != "" {
+		job.PublishedAtSource = "detail"
+	}
 
 	if strings.TrimSpace(job.ExternalID) == "" {
 		writeError(w, http.StatusUnprocessableEntity, "NO_JOB_ID", "详情缺少岗位 ID，无法匹配已有记录")
