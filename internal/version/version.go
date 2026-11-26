@@ -3,4 +3,4 @@ package version
 
 // Version 是当前版本号（semver）。发布构建会用
 // -ldflags "-X jobworkspace/internal/version.Version=vX.Y.Z" 覆盖。
-var Version = "1.2.0"
+var Version = "2.0.0"
