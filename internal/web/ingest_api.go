@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"jobworkspace/internal/config"
 	"jobworkspace/internal/mapping"
 	"jobworkspace/internal/model"
 )
@@ -23,10 +24,13 @@ const ingestBodyLimit = 4 << 20
 // raw 直接携带平台原始响应（BOSS 的 zpData 所在对象），服务端复用与 live 采集
 // 完全相同的映射链路，保证两条入口产出的字段口径一致。
 type ingestRequest struct {
-	Platform string          `json:"platform"`
-	Query    string          `json:"query"`
-	City     string          `json:"city"`
-	Raw      json.RawMessage `json:"raw"`
+	Platform string `json:"platform"`
+	// Kind 区分列表包与详情包：list（默认）新增/更新列表字段，
+	// detail 只补职位描述、招聘者、活跃度等详情字段。
+	Kind  string          `json:"kind"`
+	Query string          `json:"query"`
+	City  string          `json:"city"`
+	Raw   json.RawMessage `json:"raw"`
 }
 
 // ingestResponse 返回本批次的落库统计。
@@ -36,6 +40,7 @@ type ingestResponse struct {
 	Received int    `json:"received"` // 原始条目数
 	Mapped   int    `json:"mapped"`   // 成功映射的条目数
 	Dropped  int    `json:"dropped"`  // 因缺关键字段被丢弃的条目数
+	Updated  int    `json:"updated"`  // 命中已有记录并补全的岗位数
 	Added    int    `json:"added"`    // 新增（非覆盖）的岗位数
 	Total    int    `json:"total"`    // 落库后总岗位数
 }
@@ -87,12 +92,6 @@ func (s *Server) handleIngest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	items := extractIngestItems(root, pcfg.ListPath)
-	if len(items) == 0 {
-		writeError(w, http.StatusUnprocessableEntity, "NO_ITEMS", "raw 中没有可识别的岗位数组")
-		return
-	}
-
 	spec := mapping.Spec{
 		Platform:         pcfg.ID,
 		PlatformName:     pcfg.Name,
@@ -101,6 +100,21 @@ func (s *Server) handleIngest(w http.ResponseWriter, r *http.Request) {
 		JobURLTemplate:   pcfg.JobURLTemplate,
 	}
 	ctx := mapping.Context{Keyword: req.Query, QueryCity: req.City}
+
+	kind := strings.ToLower(strings.TrimSpace(req.Kind))
+	if kind == "" {
+		kind = "list"
+	}
+	if kind == "detail" {
+		s.ingestDetail(w, req, pcfg, spec, ctx, root, platform)
+		return
+	}
+
+	items := extractIngestItems(root, pcfg.ListPath)
+	if len(items) == 0 {
+		writeError(w, http.StatusUnprocessableEntity, "NO_ITEMS", "raw 中没有可识别的岗位数组")
+		return
+	}
 
 	jobs := make([]model.Job, 0, len(items))
 	dropped := 0
@@ -279,4 +293,60 @@ func loadOrCreateIngestToken(dataDir string) (string, error) {
 		return "", err
 	}
 	return tok, nil
+}
+
+// ingestDetail 处理详情包：只补全 JD、招聘者、活跃度等详情字段。
+//
+// 详情接口的响应结构是 {zpData:{jobInfo:{...}}}，与列表的 jobList 不同，
+// 因此单独走一条路径；匹配已有岗位靠 externalId（encryptJobId），
+// 拿不到 ID 就无法定位，直接拒绝而不是插一条重复岗位。
+func (s *Server) ingestDetail(
+	w http.ResponseWriter,
+	req ingestRequest,
+	pcfg *config.Platform,
+	spec mapping.Spec,
+	ctx mapping.Context,
+	root map[string]any,
+	platform string,
+) {
+	info, ok := mapping.ReadPath(root, "zpData.jobInfo")
+	if !ok {
+		info, ok = mapping.ReadPath(root, "jobInfo")
+	}
+	item, isMap := info.(map[string]any)
+	if !ok || !isMap || len(item) == 0 {
+		writeError(w, http.StatusUnprocessableEntity, "NO_ITEMS", "raw 中没有 zpData.jobInfo")
+		return
+	}
+
+	draft := mapping.BuildDraft(item, spec)
+	if strings.TrimSpace(draft.CityName) == "" {
+		draft.CityName = strings.TrimSpace(req.City)
+	}
+	job := mapping.Finalize(draft, spec, ctx)
+
+	if strings.TrimSpace(job.ExternalID) == "" {
+		writeError(w, http.StatusUnprocessableEntity, "NO_JOB_ID", "详情缺少岗位 ID，无法匹配已有记录")
+		return
+	}
+
+	updated, added, total, err := s.st.UpsertDetails([]model.Job{job})
+	if err != nil {
+		s.log.Error("ingest 详情落库失败", "err", err, "platform", platform, "id", job.ID)
+		writeError(w, http.StatusInternalServerError, "SAVE_FAILED", "写入岗位数据失败")
+		return
+	}
+
+	s.log.Info("接收详情上报", "platform", platform, "id", job.ID,
+		"hasDescription", strings.TrimSpace(job.Description) != "", "updated", updated, "added", added)
+
+	writeJSON(w, http.StatusOK, ingestResponse{
+		OK:       true,
+		Platform: platform,
+		Received: 1,
+		Mapped:   1,
+		Updated:  updated,
+		Added:    added,
+		Total:    total,
+	})
 }

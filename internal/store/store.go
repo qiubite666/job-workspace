@@ -99,7 +99,7 @@ func (s *Store) MergeAndSave(incoming []model.Job) (added, total int, err error)
 	}
 	for _, j := range incoming {
 		if pos, ok := index[j.ID]; ok {
-			merged[pos] = j
+			merged[pos] = mergePreserving(merged[pos], j)
 			continue
 		}
 		index[j.ID] = len(merged)
@@ -214,4 +214,121 @@ func writeJSON(path string, v any) error {
 		}
 	}
 	return nil
+}
+
+// mergePreserving 用 incoming 覆盖 existing，但 incoming 的空值不抹掉已有内容。
+//
+// 列表接口不返回职位描述，如果直接整条替换，用户点开详情补全的 JD 会在下一次
+// 列表上报时被清空。这里按字段做「有则覆盖、无则保留」的合并。
+func mergePreserving(existing, incoming model.Job) model.Job {
+	out := incoming
+
+	if strings.TrimSpace(out.Description) == "" {
+		out.Description = existing.Description
+	}
+	if strings.TrimSpace(out.ActiveTimeDesc) == "" {
+		out.ActiveTimeDesc = existing.ActiveTimeDesc
+	}
+	if strings.TrimSpace(out.PublishedAt) == "" {
+		out.PublishedAt = existing.PublishedAt
+		out.PublishedAtSource = existing.PublishedAtSource
+	}
+	if strings.TrimSpace(out.JobURL) == "" {
+		out.JobURL = existing.JobURL
+	}
+	if strings.TrimSpace(out.BossName) == "" {
+		out.BossName = existing.BossName
+	}
+	if strings.TrimSpace(out.BossTitle) == "" {
+		out.BossTitle = existing.BossTitle
+	}
+	if strings.TrimSpace(out.CityName) == "" {
+		out.CityName = existing.CityName
+	}
+	if strings.TrimSpace(out.AreaDistrict) == "" {
+		out.AreaDistrict = existing.AreaDistrict
+	}
+	if strings.TrimSpace(out.BusinessDistrict) == "" {
+		out.BusinessDistrict = existing.BusinessDistrict
+	}
+	if strings.TrimSpace(out.Location) == "" {
+		out.Location = existing.Location
+	}
+	if strings.TrimSpace(out.SalaryDesc) == "" {
+		out.SalaryDesc = existing.SalaryDesc
+		out.SalaryMin, out.SalaryMax, out.SalaryMonths = existing.SalaryMin, existing.SalaryMax, existing.SalaryMonths
+		out.SalaryUnit, out.SalaryKind = existing.SalaryUnit, existing.SalaryKind
+		out.SalaryMonthlyMin, out.SalaryMonthlyMax = existing.SalaryMonthlyMin, existing.SalaryMonthlyMax
+		out.SalaryText = existing.SalaryText
+	}
+	if strings.TrimSpace(out.Experience) == "" {
+		out.Experience = existing.Experience
+	}
+	if strings.TrimSpace(out.Degree) == "" {
+		out.Degree = existing.Degree
+	}
+	if strings.TrimSpace(out.BrandIndustry) == "" {
+		out.BrandIndustry = existing.BrandIndustry
+	}
+	if strings.TrimSpace(out.BrandScaleName) == "" {
+		out.BrandScaleName = existing.BrandScaleName
+	}
+	if strings.TrimSpace(out.BrandStageName) == "" {
+		out.BrandStageName = existing.BrandStageName
+	}
+	if len(out.Skills) == 0 {
+		out.Skills = existing.Skills
+	}
+	if len(out.JobLabels) == 0 {
+		out.JobLabels = existing.JobLabels
+	}
+	if len(out.WelfareList) == 0 {
+		out.WelfareList = existing.WelfareList
+	}
+	return out
+}
+
+// UpsertDetails 合并详情包：按 ID 命中则补全字段，未命中则新增。
+//
+// 详情包字段少（只有 JD、招聘者、活跃度等），因此合并方向是
+// 「已有记录为底，用详情里的非空值覆盖」，不能反过来，否则会把列表带的
+// 薪资、标签等字段清空。
+func (s *Store) UpsertDetails(incoming []model.Job) (updated, added, total int, err error) {
+	if len(incoming) == 0 {
+		return 0, 0, 0, nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	existing, _, rErr := readJobsFile(s.jobsPath())
+	if rErr != nil {
+		return 0, 0, 0, rErr
+	}
+
+	merged := make([]model.Job, 0, len(existing)+len(incoming))
+	index := make(map[string]int, len(existing)+len(incoming))
+	for _, j := range existing {
+		if _, dup := index[j.ID]; dup {
+			continue
+		}
+		index[j.ID] = len(merged)
+		merged = append(merged, j)
+	}
+
+	for _, j := range incoming {
+		if pos, ok := index[j.ID]; ok {
+			// 已有记录为底，详情里的非空值覆盖上去。
+			merged[pos] = mergePreserving(j, merged[pos])
+			updated++
+			continue
+		}
+		index[j.ID] = len(merged)
+		merged = append(merged, j)
+		added++
+	}
+
+	if err := s.saveJobsLocked(merged); err != nil {
+		return 0, 0, 0, err
+	}
+	return updated, added, len(merged), nil
 }

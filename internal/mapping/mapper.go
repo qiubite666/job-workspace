@@ -54,6 +54,7 @@ const (
 	fieldBossName         = "bossName"
 	fieldBossTitle        = "bossTitle"
 	fieldActiveTimeDesc   = "activeTimeDesc"
+	fieldDescription      = "description"
 	fieldJobURL           = "jobUrl"
 	fieldBrandIndustry    = "brandIndustry"
 	fieldBrandScaleName   = "brandScaleName"
@@ -147,6 +148,7 @@ func BuildDraft(raw map[string]any, spec Spec) model.JobDraft {
 		BossName:         pickString(raw, spec, fieldBossName),
 		BossTitle:        pickString(raw, spec, fieldBossTitle),
 		ActiveTimeDesc:   pickString(raw, spec, fieldActiveTimeDesc),
+		Description:      pickString(raw, spec, fieldDescription),
 		BrandIndustry:    pickString(raw, spec, fieldBrandIndustry),
 		BrandScaleName:   pickString(raw, spec, fieldBrandScaleName),
 		BrandStageName:   pickString(raw, spec, fieldBrandStageName),
@@ -187,6 +189,7 @@ func Finalize(d model.JobDraft, spec Spec, ctx Context) model.Job {
 		BossName:         strings.TrimSpace(d.BossName),
 		BossTitle:        strings.TrimSpace(d.BossTitle),
 		ActiveTimeDesc:   strings.TrimSpace(d.ActiveTimeDesc),
+		Description:      plainText(d.Description),
 		JobURL:           strings.TrimSpace(d.JobURL),
 		BrandIndustry:    strings.TrimSpace(d.BrandIndustry),
 		BrandScaleName:   strings.TrimSpace(d.BrandScaleName),
@@ -533,4 +536,60 @@ func normalizeSource(iso, source string) string {
 		return "api"
 	}
 	return "missing"
+}
+
+// plainText 把职位描述从 HTML/富文本收敛成纯文本。
+//
+// BOSS 详情接口的 postDescription 常带 <br>、<p>、&nbsp; 等标记，直接塞进
+// 前端会破坏排版；这里只做「换行保留 + 标签剥离 + 常见实体解码」，
+// 不追求完整的 HTML 解析（也不该在这里做）。
+func plainText(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return ""
+	}
+
+	// 先把换行类标签变成真正的换行，再剥离其余标签。
+	replacer := strings.NewReplacer(
+		"<br>", "\n", "<br/>", "\n", "<br />", "\n", "<BR>", "\n",
+		"</p>", "\n", "</P>", "\n", "</div>", "\n", "</li>", "\n",
+		"&nbsp;", " ", "&amp;", "&", "&lt;", "<", "&gt;", ">", "&quot;", "\"", "&#39;", "'",
+	)
+	s = replacer.Replace(s)
+
+	var b strings.Builder
+	b.Grow(len(s))
+	depth := 0
+	for _, r := range s {
+		switch r {
+		case '<':
+			depth++
+		case '>':
+			if depth > 0 {
+				depth--
+			}
+		default:
+			if depth == 0 {
+				b.WriteRune(r)
+			}
+		}
+	}
+
+	// 压缩连续空行：最多保留一个空行，避免正文里出现大片空白。
+	lines := strings.Split(b.String(), "\n")
+	out := make([]string, 0, len(lines))
+	blank := 0
+	for _, line := range lines {
+		line = strings.TrimRight(line, " \t\r")
+		if strings.TrimSpace(line) == "" {
+			blank++
+			if blank > 1 {
+				continue
+			}
+		} else {
+			blank = 0
+		}
+		out = append(out, line)
+	}
+	return strings.TrimSpace(strings.Join(out, "\n"))
 }

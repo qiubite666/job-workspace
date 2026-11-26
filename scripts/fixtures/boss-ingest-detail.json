@@ -1,0 +1,20 @@
+{
+  "platform": "boss",
+  "kind": "detail",
+  "raw": {
+    "code": 0,
+    "zpData": {
+      "jobInfo": {
+        "encryptJobId": "ingest-demo-001",
+        "jobName": "运维工程师",
+        "brandName": "青城数据",
+        "cityName": "呼和浩特",
+        "areaDistrict": "赛罕区",
+        "bossName": "张工",
+        "bossTitle": "技术总监",
+        "bossActiveTimeDesc": "刚刚活跃",
+        "postDescription": "<p>岗位职责：</p><p>1. 负责 K8s 集群日常运维与容量规划<br>2. 建设监控告警体系（Prometheus + Grafana）</p><p>&nbsp;</p><p>任职要求：</p><p>1. 3 年以上 Linux 运维经验<br>2. 熟悉 Shell/Python 至少一种</p>"
+      }
+    }
+  }
+}

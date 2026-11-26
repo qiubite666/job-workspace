@@ -40,6 +40,9 @@ type Job struct {
 	BossName       string   `json:"bossName"`       // 招聘者
 	BossTitle      string   `json:"bossTitle"`      // 招聘者职位
 	ActiveTimeDesc string   `json:"activeTimeDesc"` // 活跃度描述
+	// Description 是职位描述正文，纯文本（已去标签）。列表接口不返回，
+	// 只有在 BOSS 打开详情页后由扩展回填。
+	Description string `json:"description"`
 
 	PublishedAt       string `json:"publishedAt"`       // RFC3339；无则为 ""
 	PublishedAtSource string `json:"publishedAtSource"` // api | detail | missing
@@ -73,10 +76,12 @@ type JobDraft struct {
 	BossName         string
 	BossTitle        string
 	ActiveTimeDesc   string
-	JobURL           string
-	BrandIndustry    string
-	BrandScaleName   string
-	BrandStageName   string
+	// Description 是职位描述正文（详情接口才有，列表接口不返回）。
+	Description    string
+	JobURL         string
+	BrandIndustry  string
+	BrandScaleName string
+	BrandStageName string
 	// PublishedRaw 是「已取到值」的发布时间候选，按优先级排列，交给 parser.ParsePublishTime。
 	// 支持时间戳字符串、"2026-11-24"、"3天前" 等格式。
 	PublishedRaw []string

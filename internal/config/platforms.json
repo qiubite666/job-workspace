@@ -32,7 +32,9 @@
       "hasMorePath": "zpData.hasMore",
       "codeField": "code",
       "messageField": "message",
-      "successCodes": ["0"],
+      "successCodes": [
+        "0"
+      ],
       "errorCodes": {
         "31": "BLOCKED",
         "37": "BLOCKED",
@@ -40,26 +42,78 @@
         "35": "AUTH_REQUIRED"
       },
       "fieldMap": {
-        "externalId": ["encryptJobId", "jobId"],
-        "jobName": ["jobName"],
-        "brandName": ["brandName"],
-        "cityName": ["cityName"],
-        "areaDistrict": ["areaDistrict"],
-        "businessDistrict": ["businessDistrict"],
-        "salaryDesc": ["salaryDesc", "salary"],
-        "experience": ["jobExperience", "experience"],
-        "degree": ["jobDegree", "degree"],
-        "jobLabels": ["jobLabels"],
-        "skills": ["skills"],
-        "welfareList": ["welfareList"],
-        "bossName": ["bossName", "boss_name"],
-        "bossTitle": ["bossTitle"],
-        "activeTimeDesc": ["bossActiveTimeDesc", "bossActiveStatus"],
-        "brandIndustry": ["brandIndustry"],
-        "brandScaleName": ["brandScaleName"],
-        "brandStageName": ["brandStageName"]
+        "externalId": [
+          "encryptJobId",
+          "jobId"
+        ],
+        "jobName": [
+          "jobName"
+        ],
+        "brandName": [
+          "brandName"
+        ],
+        "cityName": [
+          "cityName"
+        ],
+        "areaDistrict": [
+          "areaDistrict"
+        ],
+        "businessDistrict": [
+          "businessDistrict"
+        ],
+        "salaryDesc": [
+          "salaryDesc",
+          "salary"
+        ],
+        "experience": [
+          "jobExperience",
+          "experience"
+        ],
+        "degree": [
+          "jobDegree",
+          "degree"
+        ],
+        "jobLabels": [
+          "jobLabels"
+        ],
+        "skills": [
+          "skills"
+        ],
+        "welfareList": [
+          "welfareList"
+        ],
+        "bossName": [
+          "bossName",
+          "boss_name"
+        ],
+        "bossTitle": [
+          "bossTitle"
+        ],
+        "activeTimeDesc": [
+          "bossActiveTimeDesc",
+          "bossActiveStatus"
+        ],
+        "brandIndustry": [
+          "brandIndustry"
+        ],
+        "brandScaleName": [
+          "brandScaleName"
+        ],
+        "brandStageName": [
+          "brandStageName"
+        ],
+        "description": [
+          "postDescription",
+          "jobDescription",
+          "description"
+        ]
       },
-      "publishTimePaths": ["postTime", "publishTime", "jobTime", "jobInfo.postTime"],
+      "publishTimePaths": [
+        "postTime",
+        "publishTime",
+        "jobTime",
+        "jobInfo.postTime"
+      ],
       "cities": {
         "北京": "101010100",
         "上海": "101020100",
@@ -88,7 +142,9 @@
       "domain": "liepin.com",
       "searchUrl": "https://www.liepin.com/zhaopin/",
       "listPath": "data.dataList",
-      "successCodes": ["0"],
+      "successCodes": [
+        "0"
+      ],
       "pageSize": 20,
       "maxPages": 5,
       "respectRobots": true
