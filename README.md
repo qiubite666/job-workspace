@@ -26,15 +26,13 @@ git clone git@github.com:qiubite666/job-workspace.git
 ```bash
 cd job-workspace
 
-# 1) 零网络自检：读示例数据 → 去重排序 → 落盘
-go run . collect --mode=sample --query=Java
+# 1) 先创建后台账号（首次必须做，否则无法登录）
+go run . user add --username admin
+# 会打印一次性随机密码，请保存
 
-# 2) 解析链路自检：把 BOSS 真实响应夹具走一遍「映射 → 收口」
-go run . collect --mode=local --file data/samples/boss.raw.json --platforms=boss --query=Java --city=北京
-
-# 3) 启动工作台
+# 2) 启动工作台
 go run . serve
-# 浏览器打开 http://127.0.0.1:8787
+# 浏览器打开 http://127.0.0.1:8787，用上面的账号登录
 ```
 
 编译为单文件二进制：
@@ -75,10 +73,10 @@ job-workspace/
 │   └── web/server.go + index.html  本地服务 + 单文件工作台
 ├── config/platforms.json         平台配置（运行时可直接复制修改，用 --config 覆盖）
 └── data/
-    ├── jobs.sample.json          离线示例数据（8 条，含面议/日薪/缺发布时间）
-    ├── samples/boss.raw.json     BOSS 原始响应夹具（9 条）
-    ├── jobs.json                 采集产物（运行时生成）
-    └── collect.report.json       采集报告（运行时生成）
+    ├── jobs.json                 采集产物（运行时生成，不入库）
+    ├── collect.report.json       采集报告（运行时生成，不入库）
+    ├── users.json                后台账号（含密码哈希，不入库）
+    └── userstate/                每个账号的收藏/投递状态/备注（不入库）
 ```
 
 ---
@@ -126,24 +124,30 @@ job-workspace/
 
 ---
 
-## 5. 三种采集模式
+## 5. 采集（仅 live 模式）
 
-| 模式 | 网络 | 用途 | 数据来源 |
-|---|---|---|---|
-| `sample` | 否 | 零依赖自检、演示 | `data/jobs.sample.json` |
-| `local` | 否 | 验证某平台的解析/映射链路 | `--file` 指定的原始响应 JSON |
-| `live` | 是 | 真实采集 | 平台搜索接口 |
+v2 起只保留联网采集一种方式，`sample` / `local` 模式已移除——它们产生的数据来源混杂，
+容易让人把演示数据当成真实结果。
 
-### 合规说明（重要）
+| 项目 | 说明 |
+|---|---|
+| 网络 | 是（真实请求平台搜索接口） |
+| 前置条件 | 自备已登录的 cookie（`--cookie` / `--cookie-file` / `BOSS_COOKIE`） |
+| 落盘 | `data/jobs.json`，与已有数据按 ID 合并去重 |
 
-`https://www.zhipin.com/robots.txt` 中存在 `Disallow: /*?*`，**所有带查询参数的 URL 均被声明禁止抓取**，
-搜索接口属于此列。因此本工具的默认行为是：
+### 合规边界（重要，默认拦截）
 
-1. `live` 模式内置 robots 网关：命中 `Disallow` 即抛 `ROBOTS_DISALLOWED` 并停止，**默认不放行**。
-2. 只有显式传入 `--allow-disallowed`（界面里对应一个默认不勾选的复选框）才会放行，并打印风险提示。
-3. 无论是否放行，请求间隔强制 `3~6s` 随机抖动、单平台最多 10 页、失败按 800ms×2ⁿ 退避且仅重试可重试错误。
-4. 工具不绕过验证码、不破解登录、不伪造指纹；`live` 需要使用者自备已登录的 cookie。
-5. 若所在场景不允许抓取，请只用 `local` 模式：自行在浏览器导出接口响应，再导入解析——完全离线、零请求。
+`https://www.zhipin.com/robots.txt` 含 `Disallow: /*?*`，**所有带查询参数的 URL 都被声明禁止抓取**，
+搜索接口正在此列。因此：
+
+1. 内置 robots 网关命中 `Disallow` 即抛 `ROBOTS_DISALLOWED` 并停止，**默认不放行**。
+2. 只有显式传入 `--allow-disallowed`（界面里是一个默认不勾选的复选框）才会放行，并打印风险提示。
+3. 请求间隔强制 `3~6s` 随机抖动、单平台最多 10 页、失败按 800ms×2ⁿ 退避且仅重试可重试错误。
+4. 工具不绕过验证码、不破解登录、不伪造指纹。
+5. **不提供本地导入模式后，若所在场景不允许抓取，请直接在浏览器里查看岗位，不要使用本工具的采集功能。**
+
+> 需要说明的取舍：移除 `local` 模式后，默认配置下 `collect` 会因 robots 拦截而失败，
+> 必须显式加 `--allow-disallowed` 才会真正发出请求。这是刻意的——让"越界"成为一个需要主动确认的动作。
 
 ---
 
@@ -156,11 +160,9 @@ jobworkspace collect [flags]
   --pages <n>             页数，默认取配置，上限 maxPages
   --page-size <n>         每页条数
   --platforms a,b         仅跑指定平台
-  --mode sample|local|live  默认 sample
-  --file <path>           local 模式的原始响应文件
   --cookie <str>          live 模式登录态（也会读 --cookie-file 与 BOSS_COOKIE）
   --cookie-file <path>    从文件读取登录态 cookie，部署场景推荐
-  --allow-disallowed      显式放行 robots 禁止路径
+  --allow-disallowed      显式放行 robots 禁止路径（不加则命中即失败）
   --out <path>            默认 data/jobs.json
   --config <path>         外部配置，默认用内嵌 platforms.json
   --json                  以 JSON 输出摘要
@@ -288,18 +290,61 @@ lastCity=101080100; ab_guid=...; wt2=...; zp_at=...; __zp_stoken__=...; bst=...;
 | 薪资为「面议」/空 | `salaryKind=negotiable/unknown`，数值为 `null`，岗位照常入库 |
 | 发布时间缺失 | `publishedAt=""`、`publishedAtSource="missing"`，排序时排在有时间的之后 |
 | 重复岗位（同 ID / 同指纹） | 保留完整度最高者，计入 `duplicates` |
-| 数据文件不存在 | 回退示例数据，`source=sample`，不报错 |
+| 数据文件不存在 | 返回空列表（无示例数据回退），前端显示空态，不报错 |
 | 采集子进程超时 | HTTP 500，返回 stderr 末 2000 字符 |
 
 ---
 
-## 10. 已知限制与命名债
+## 10. Windows 使用
+
+从 [Releases](https://github.com/qiubite666/job-workspace/releases/latest) 下载
+`jobworkspace-windows-amd64.exe`，无需安装、无需 Go 环境。
+
+```powershell
+# 进入放置目录
+cd D:\job-workspace
+
+# 创建管理员（首次必须做；不指定 --password 会生成随机密码并只打印一次）
+.\jobworkspace-windows-amd64.exe user add --username admin
+
+# 启动工作台
+.\jobworkspace-windows-amd64.exe serve
+# 浏览器打开 http://127.0.0.1:8787
+```
+
+实用说明：
+
+- 服务**只绑定 `127.0.0.1`**，不监听局域网，也不主动开防火墙端口；只有本机能访问。
+- PowerShell 里路径含空格要加引号：`& "D:\my tools\jobworkspace.exe" serve`。
+- 需要长期运行时，用「任务计划程序」在系统启动时执行；本机不提供 Windows 服务安装脚本。
+- 数据默认落在**当前工作目录**的 `data\`，所以先 `cd` 到固定目录再启动，否则换目录就看不到数据。
+  也可以用 `--data D:\job-workspace\data` 指定绝对路径。
+- cookie 文件同 Linux：`--cookie-file D:\job-workspace\boss.cookie`，单行整段值。
+
+---
+
+## 11. 全站登录与数据云同步（v2）
+
+- **整站登录**：首页与 `/admin` 共用同一会话。未登录时首页只显示登录卡片，
+  不加载任何岗位数据；用 `admin` 登录后可直接在顶栏看到「管理后台」入口，无需二次登录。
+- nginx 不再做 Basic Auth，鉴权全部收敛到应用层（nginx 只负责 TLS 与反向代理）。
+- `/api/jobs`、`/api/collect`、`/api/admin/*`、`/api/me/state` 均要求登录；
+  `/api/health`、`/api/platforms` 保持公开（监控探活与静态配置）。
+- **收藏 / 投递状态 / 备注云端化**：按账号隔离，落在 `data/userstate/<用户名>.json`（0600）。
+  接口为 `GET/PUT /api/me/state`，服务端会归一化（去重、阶段白名单、备注 500 字上限）
+  并忽略客户端伪造的 `version` / `updatedAt`。
+- 前端变更后 800ms 防抖自动保存，顶栏显示「已保存 / 保存中 / 保存失败」并支持「立即保存」。
+  退出登录会清空内存态，避免串号。
+
+---
+
+## 12. 已知限制与命名债
 
 - **命名债**：统一模型中的 `bossName` / `bossTitle` 语义是「招聘者姓名 / 招聘者职位」，
   沿用了 BOSS 直聘的字段词。这是本次统一建模时的历史命名，属于**平台词汇泄漏进核心模型**的瑕疵。
   改名方案（向后兼容）：`RecruiterName` / `RecruiterTitle`，JSON 同时输出
   `recruiterName` 与保留别名 `bossName`，前端逐步切到新字段后即可删除旧字段。
-  本次未做，是因为改名要同时触及 model / mapping / 示例数据 / 前端四处，会与并行开发的前端任务冲突。
+  本次未做，是因为改名要同时触及 model / mapping / 前端三处，会与并行开发的前端任务冲突。
 - BOSS 直聘列表接口通常**不返回发布时间**，只有部分条目带 `postTime`；缺失时前端显示「时间未提供」，
   并明确标注来源，不做推断造假。详情页可补，但需要登录态且请求量翻倍，本期未实现。
 - `liepin` 适配器是**骨架**（`experimental: true`、默认 `enabled: false`），只保证接口正确与可编译，不保证可采。

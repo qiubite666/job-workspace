@@ -1,4 +1,8 @@
-# 招聘平台接入层 · Go 实现契约 v1.0（唯一真源）
+# 招聘平台接入层 · Go 实现契约 v1.0（历史留档）
+
+> **状态：已被 `contracts/V2.md` 取代，仅作历史参考。**
+> 其中关于 sample / local 模式、示例数据回退、nginx Basic Auth 的描述在 v2 均已失效。
+> 当前接口真源：优先 `contracts/V2.md`，平台适配器相关章节仍可参考本文。
 
 > 并行开发的唯一接口依据。**已冻结的共享类型**见 `internal/model`、`internal/errs`、`internal/platform`（registry），
 > 这三个包由主控编写，任何子 agent **不得修改**。其余文件按下方归属各自实现。
