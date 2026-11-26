@@ -1,5 +1,5 @@
 /**
- * popup.js —— 配置服务端地址 / token，展示最近一次上报结果。
+ * popup.js —— 配置服务端地址 / token，分别展示最近一次「列表上报」与「详情上报」结果。
  */
 "use strict";
 
@@ -8,9 +8,22 @@ var els = {
   token: document.getElementById("token"),
   save: document.getElementById("save"),
   test: document.getElementById("test"),
-  status: document.getElementById("status"),
-  resultAt: document.getElementById("resultAt"),
-  resultBody: document.getElementById("resultBody")
+  status: document.getElementById("status")
+};
+
+var slots = {
+  list: {
+    label: "列表上报",
+    at: document.getElementById("listAt"),
+    body: document.getElementById("listBody"),
+    empty: "还没有列表上报记录。"
+  },
+  detail: {
+    label: "详情上报",
+    at: document.getElementById("detailAt"),
+    body: document.getElementById("detailBody"),
+    empty: "还没有详情上报记录。"
+  }
 };
 
 function setStatus(text, isError) {
@@ -41,21 +54,21 @@ function addRow(list, label, value, cls) {
   list.appendChild(dd);
 }
 
-function renderResult(result) {
-  els.resultBody.innerHTML = "";
+function renderResult(slot, result) {
+  slot.body.innerHTML = "";
 
   if (!result) {
-    els.resultAt.textContent = "最近一次上报：暂无";
-    els.resultBody.className = "empty";
-    els.resultBody.textContent = "还没有上报记录。";
+    slot.at.textContent = slot.label + "：暂无";
+    slot.body.className = "empty";
+    slot.body.textContent = slot.empty;
     return;
   }
 
   var scope = [];
   if (result.query) scope.push(result.query);
   if (result.city) scope.push(result.city);
-  els.resultAt.textContent = "最近一次上报：" + formatTime(result.at) + (scope.length ? " · " + scope.join(" · ") : "");
-  els.resultBody.className = "";
+  slot.at.textContent = slot.label + "：" + formatTime(result.at) + (scope.length ? " · " + scope.join(" · ") : "");
+  slot.body.className = "";
 
   var list = document.createElement("dl");
   addRow(list, "结果", result.ok ? "成功" : "失败", result.ok ? "ok" : "fail");
@@ -78,7 +91,7 @@ function renderResult(result) {
     addRow(list, "错误", result.message, "fail");
   }
 
-  els.resultBody.appendChild(list);
+  slot.body.appendChild(list);
 }
 
 async function saveConfig() {
@@ -154,10 +167,11 @@ async function testConnection() {
 
 async function init() {
   try {
-    var cfg = await chrome.storage.local.get(["serverUrl", "token", "lastResult"]);
+    var cfg = await chrome.storage.local.get(["serverUrl", "token", "lastListResult", "lastDetailResult"]);
     els.serverUrl.value = cfg.serverUrl || "";
     els.token.value = cfg.token || "";
-    renderResult(cfg.lastResult || null);
+    renderResult(slots.list, cfg.lastListResult || null);
+    renderResult(slots.detail, cfg.lastDetailResult || null);
   } catch (e) {
     setStatus("读取配置失败", true);
   }
@@ -170,8 +184,9 @@ els.token.addEventListener("keydown", function (event) {
 });
 
 chrome.storage.onChanged.addListener(function (changes, area) {
-  if (area !== "local" || !changes.lastResult) return;
-  renderResult(changes.lastResult.newValue || null);
+  if (area !== "local") return;
+  if (changes.lastListResult) renderResult(slots.list, changes.lastListResult.newValue || null);
+  if (changes.lastDetailResult) renderResult(slots.detail, changes.lastDetailResult.newValue || null);
 });
 
 init();
