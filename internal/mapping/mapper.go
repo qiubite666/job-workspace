@@ -157,9 +157,17 @@ func BuildDraft(raw map[string]any, spec Spec) model.JobDraft {
 		PublishedRaw:     pickPublishRaw(raw, spec.PublishTimePaths),
 	}
 
-	if strings.TrimSpace(d.ActiveTimeDesc) == "" {
-		d.ActiveTimeDesc = activeDescFromStatus(raw, spec.ActiveOnlinePath, spec.ActiveTimePath)
+	// 活跃状态：优先用现成文案；但某些接口给的是数字状态码（0/1/2），
+	// 直接展示会变成裸数字，这种情况回落去合成，合成不出就留空。
+	desc := strings.TrimSpace(d.ActiveTimeDesc)
+	if desc == "" || isDigitsOnly(desc) {
+		if alt := activeDescFromStatus(raw, spec.ActiveOnlinePath, spec.ActiveTimePath); alt != "" {
+			desc = alt
+		} else if isDigitsOnly(desc) {
+			desc = ""
+		}
 	}
+	d.ActiveTimeDesc = desc
 
 	d.JobURL = buildJobURL(raw, spec, d.ExternalID)
 
@@ -668,4 +676,20 @@ func toMillis(v any) (int64, bool) {
 		return n, true
 	}
 	return 0, false
+}
+
+// isDigitsOnly 判断字符串是否纯数字。
+//
+// 用于识别「状态码被当成文案」的情况：scalarString 会把数字标量转成 "2"，
+// 这种值没有可读语义，不能直接渲染。
+func isDigitsOnly(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }

@@ -65,3 +65,31 @@ func TestBuildDraftFillsActiveDesc(t *testing.T) {
 	}
 	_ = model.Job{}
 }
+
+// TestNumericActiveCodeDropped 数字状态码不得直接当成文案渲染。
+func TestNumericActiveCodeDropped(t *testing.T) {
+	spec := Spec{
+		Platform:         "boss",
+		PlatformName:     "BOSS直聘",
+		FieldMap:         map[string][]string{"activeTimeDesc": {"bossActiveStatus"}},
+		ActiveOnlinePath: "bossOnline",
+	}
+
+	// 只给数字码、没有可用兜底 → 留空
+	d := BuildDraft(map[string]any{"bossActiveStatus": float64(2)}, spec)
+	if d.ActiveTimeDesc != "" {
+		t.Errorf("数字状态码应被丢弃，实际 %q", d.ActiveTimeDesc)
+	}
+
+	// 数字码 + 在线状态 → 用合成值覆盖
+	d2 := BuildDraft(map[string]any{"bossActiveStatus": float64(1), "bossOnline": true}, spec)
+	if d2.ActiveTimeDesc != "在线" {
+		t.Errorf("应回落到合成值，实际 %q", d2.ActiveTimeDesc)
+	}
+
+	// 正常文案不受影响
+	d3 := BuildDraft(map[string]any{"bossActiveStatus": "刚刚活跃"}, spec)
+	if d3.ActiveTimeDesc != "刚刚活跃" {
+		t.Errorf("正常文案被误改: %q", d3.ActiveTimeDesc)
+	}
+}
