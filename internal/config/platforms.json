@@ -1,0 +1,97 @@
+{
+  "version": 1,
+  "defaults": {
+    "pages": 2,
+    "pageSize": 30,
+    "minDelayMs": 2800,
+    "maxDelayMs": 6000,
+    "timeoutMs": 15000,
+    "retries": 2,
+    "respectRobots": true
+  },
+  "platforms": {
+    "boss": {
+      "id": "boss",
+      "enabled": true,
+      "priority": 10,
+      "experimental": false,
+      "name": "BOSS直聘",
+      "domain": "zhipin.com",
+      "searchUrl": "https://www.zhipin.com/wapi/zpgeek/search/joblist.json",
+      "jobUrlTemplate": "https://www.zhipin.com/job_detail/{{externalId}}.html",
+      "referer": "https://www.zhipin.com/web/geek/job",
+      "cookieEnv": "BOSS_COOKIE",
+      "queryParams": {
+        "scene": "1",
+        "query": "{{query}}",
+        "city": "{{city}}",
+        "page": "{{page}}",
+        "pageSize": "{{pageSize}}"
+      },
+      "listPath": "zpData.jobList",
+      "hasMorePath": "zpData.hasMore",
+      "codeField": "code",
+      "messageField": "message",
+      "successCodes": ["0"],
+      "errorCodes": {
+        "31": "BLOCKED",
+        "37": "BLOCKED",
+        "17": "AUTH_REQUIRED",
+        "35": "AUTH_REQUIRED"
+      },
+      "fieldMap": {
+        "externalId": ["encryptJobId", "jobId"],
+        "jobName": ["jobName"],
+        "brandName": ["brandName"],
+        "cityName": ["cityName"],
+        "areaDistrict": ["areaDistrict"],
+        "businessDistrict": ["businessDistrict"],
+        "salaryDesc": ["salaryDesc", "salary"],
+        "experience": ["jobExperience", "experience"],
+        "degree": ["jobDegree", "degree"],
+        "jobLabels": ["jobLabels"],
+        "skills": ["skills"],
+        "welfareList": ["welfareList"],
+        "bossName": ["bossName", "boss_name"],
+        "bossTitle": ["bossTitle"],
+        "activeTimeDesc": ["bossActiveTimeDesc", "bossActiveStatus"],
+        "brandIndustry": ["brandIndustry"],
+        "brandScaleName": ["brandScaleName"],
+        "brandStageName": ["brandStageName"]
+      },
+      "publishTimePaths": ["postTime", "publishTime", "jobTime", "jobInfo.postTime"],
+      "cities": {
+        "北京": "101010100",
+        "上海": "101020100",
+        "广州": "101280100",
+        "深圳": "101280600",
+        "杭州": "101210100",
+        "成都": "101270100",
+        "南京": "101190100",
+        "武汉": "101200100",
+        "西安": "101110100",
+        "苏州": "101190400"
+      },
+      "pageSize": 30,
+      "maxPages": 10,
+      "minDelayMs": 3000,
+      "maxDelayMs": 6000,
+      "respectRobots": true,
+      "allowDisallowed": false
+    },
+    "liepin": {
+      "id": "liepin",
+      "enabled": false,
+      "priority": 20,
+      "experimental": true,
+      "name": "猎聘",
+      "domain": "liepin.com",
+      "searchUrl": "https://www.liepin.com/zhaopin/",
+      "listPath": "data.dataList",
+      "successCodes": ["0"],
+      "pageSize": 20,
+      "maxPages": 5,
+      "respectRobots": true
+    }
+  }
+}
