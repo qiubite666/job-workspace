@@ -1624,9 +1624,11 @@ function tagsHTML(job) {
   return '<div class="job__tags">' + html + "</div>";
 }
 
-/* 招聘者活跃状态：唯一取用入口，空值一律折叠成 "" */
+/* 招聘者活跃状态：唯一取用入口，空值一律折叠成 ""。
+   纯数字（如 "2"）是上游把 BOSS 的状态码当标量转出来的残值，语义不可读，按空值处理。 */
 function activityText(job) {
-  return job && typeof job.activeTimeDesc === "string" ? job.activeTimeDesc.trim() : "";
+  var act = job && typeof job.activeTimeDesc === "string" ? job.activeTimeDesc.trim() : "";
+  return /^\d+$/.test(act) ? "" : act;
 }
 
 /* 职位描述正文：空白正文按「没有」处理，其余保留原始换行 */
