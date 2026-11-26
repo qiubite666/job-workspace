@@ -1,0 +1,45 @@
+[Unit]
+Description=Job Workspace (求职工作台 · 单二进制 HTTP 服务)
+Documentation=file:///home/ops/service/job-workspace/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# 若服务器上没有 ops 用户，请改成实际运行用户（脚本会先检查）
+User=ops
+Group=ops
+
+WorkingDirectory=/home/ops/service/job-workspace
+# 可选环境变量文件（BOSS_COOKIE 等），不存在时忽略
+EnvironmentFile=-/home/ops/service/job-workspace/env
+
+ExecStart=/home/ops/service/job-workspace/jobworkspace serve --addr=127.0.0.1:8787
+Restart=on-failure
+RestartSec=3s
+TimeoutStopSec=15s
+KillSignal=SIGTERM
+
+# ---------- 加固 ----------
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+LimitNOFILE=4096
+
+# ProtectSystem=strict 会把 / 置为只读，需显式放开应用目录的写权限
+# （data/jobs.json 等运行产物要落在这里）
+ReadWritePaths=/home/ops/service/job-workspace
+
+[Install]
+WantedBy=multi-user.target

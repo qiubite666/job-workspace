@@ -35,8 +35,10 @@ import (
 	"jobworkspace/internal/web"
 )
 
-// version 是二进制版本号，供 serve 的 /api/health 使用。
-const version = "1.0.0"
+// version 是二进制版本号，供 serve 的 /api/health 与发布产物使用。
+// 声明为 var 而非 const，是为了让 release 构建能通过
+// -ldflags "-X main.version=<tag>" 注入真实版本号。
+var version = "1.0.0"
 
 // defaultAddr 是 serve 的默认监听地址，强制回环地址，避免误暴露到局域网。
 const defaultAddr = "127.0.0.1:8787"
