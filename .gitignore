@@ -46,3 +46,7 @@ Thumbs.db
 /tmp/
 /.cache/
 **/__pycache__/
+
+# 构建时 Windows 可能残留的临时副本
+*.exe~
+*.exe.old

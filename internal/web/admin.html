@@ -105,6 +105,33 @@ svg{display:block}
   background:rgba(215,0,21,.06);color:var(--danger);font-size:13px;line-height:1.5;
 }
 .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 14px}
+/* 后台尚未初始化（没有任何账号）时的提示块 */
+.form-notice{
+  margin:0 0 14px;padding:12px 14px;border-radius:10px;
+  background:rgba(215,0,21,.06);color:var(--danger);
+  font-size:13px;line-height:1.55;
+}
+.form-notice__cmd{
+  display:flex;flex-direction:column;align-items:stretch;gap:6px;
+  margin-top:8px;padding:8px 10px;border-radius:8px;
+  background:rgba(0,0,0,.05);
+}
+.form-notice__cmd code{
+  min-width:0;
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  font-size:12px;line-height:1.5;color:var(--text);
+  /* 命令保持单行，宽度不够时在框内横向滚动，避免折成两行难辨认 */
+  white-space:nowrap;overflow-x:auto;overflow-wrap:normal;
+  padding-bottom:2px;user-select:all;-webkit-user-select:all;
+}
+.copy-btn{
+  align-self:flex-end;display:inline-flex;align-items:center;justify-content:center;
+  min-height:32px;padding:0 10px;border:0;border-radius:8px;
+  background:rgba(0,0,0,.06);color:var(--muted);
+  font-size:11px;letter-spacing:.02em;cursor:pointer;
+  transition:all .2s var(--ease);
+}
+.copy-btn:hover{background:rgba(0,0,0,.1);color:var(--text)}
 .form-grid .span-2{grid-column:1/-1}
 
 /* ---------- 控制台头部 ---------- */
@@ -375,6 +402,13 @@ svg{display:block}
         <input id="loginPass" type="password" name="password" autocomplete="current-password" placeholder="请输入密码" required>
       </label>
       <p class="form-error" id="loginError" role="alert" hidden></p>
+      <div class="form-notice" id="initNotice" role="alert" hidden>
+        <p>后台尚未初始化，请先在服务器上创建管理员账号</p>
+        <div class="form-notice__cmd">
+          <code id="initCmd">jobworkspace user add --username admin</code>
+          <button class="copy-btn" type="button" id="copyCmd">复制</button>
+        </div>
+      </div>
       <button class="btn btn--primary btn--block" id="loginSubmit" type="submit">登录</button>
     </form>
   </div>
@@ -597,6 +631,9 @@ var state = {
 var ui = {
   loginBusy: false,
   loginError: "",
+  /* 后端尚未创建任何账号：/api/auth/me 或登录接口返回 AUTH_NOT_INITIALIZED 时置位，
+     登录按钮禁用，避免明知不可能成功还去撞限流。 */
+  uninitialized: false,
   jobOpen: false,
   editId: null,
   saving: false,
@@ -696,7 +733,12 @@ function expireSession() {
 async function loadSession() {
   try {
     var out = await api("/api/auth/me", { handleUnauthorized: false });
-    if (!out.ok || !out.data || out.data.authenticated !== true) return;
+    if (!out.ok || !out.data || out.data.authenticated !== true) {
+      /* 后端还没有任何账号：直接进入「未初始化」提示态，而不是让用户反复试密码 */
+      ui.uninitialized = !!(out.data && out.data.error === "AUTH_NOT_INITIALIZED");
+      return;
+    }
+    ui.uninitialized = false;
     var user = normalizeUser(out.data.user);
     if (!user) return;
     state.user = user;
@@ -729,6 +771,8 @@ function isJobLike(item) {
 async function doLogin(event) {
   event.preventDefault();
   if (ui.loginBusy) return;
+  /* 已知后端没有任何账号：不发请求，避免无谓的失败计数与限流 */
+  if (ui.uninitialized) return;
   var username = String($("#loginUser").value || "").trim();
   var password = String($("#loginPass").value || "");
   if (!username || !password) {
@@ -750,7 +794,12 @@ async function doLogin(event) {
       return;
     }
     if (out.status === 401) {
-      ui.loginError = "用户名或密码不正确";
+      if (out.data && out.data.error === "AUTH_NOT_INITIALIZED") {
+        ui.uninitialized = true;
+        ui.loginError = "";
+      } else {
+        ui.loginError = "用户名或密码不正确";
+      }
       return;
     }
     if (!out.ok || !out.data || out.data.ok !== true) {
@@ -762,6 +811,7 @@ async function doLogin(event) {
       ui.loginError = "登录失败，请稍后重试";
       return;
     }
+    ui.uninitialized = false;
     state.user = user;
     state.loaded = false;
     $("#loginPass").value = "";
@@ -782,6 +832,7 @@ async function doLogout() {
   state.page = 1;
   state.loaded = false;
   ui.loginError = "";
+  ui.uninitialized = false;
   ui.jobOpen = false;
   ui.editId = null;
   ui.deleteId = null;
@@ -790,6 +841,34 @@ async function doLogout() {
   $("#loginUser").value = "";
   refreshAll();
   showToast("已退出登录", "ok");
+}
+
+/* 复制「创建管理员」命令：优先 Clipboard API，失败时退回选中文本 */
+async function copyInitCommand() {
+  var cmdEl = $("#initCmd");
+  var text = cmdEl ? cmdEl.textContent.trim() : "";
+  if (!text) return;
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text);
+      showToast("命令已复制", "ok");
+      return;
+    }
+  } catch (err) { /* 落到下面的兜底方案 */ }
+  try {
+    var area = document.createElement("textarea");
+    area.value = text;
+    area.setAttribute("readonly", "");
+    area.style.position = "fixed";
+    area.style.top = "-1000px";
+    document.body.appendChild(area);
+    area.select();
+    var ok = document.execCommand("copy");
+    document.body.removeChild(area);
+    showToast(ok ? "命令已复制" : "复制失败，请手动选择", ok ? "ok" : "error");
+  } catch (err) {
+    showToast("复制失败，请手动选择", "error");
+  }
 }
 
 /* =========================================================
@@ -912,7 +991,7 @@ function renderShell() {
 
   var submit = $("#loginSubmit");
   if (submit) {
-    submit.disabled = !!ui.loginBusy;
+    submit.disabled = !!ui.loginBusy || !!ui.uninitialized;
     submit.textContent = ui.loginBusy ? "登录中…" : "登录";
   }
   var err = $("#loginError");
@@ -920,6 +999,8 @@ function renderShell() {
     err.textContent = ui.loginError || "";
     err.hidden = !ui.loginError;
   }
+  var notice = $("#initNotice");
+  if (notice) notice.hidden = !ui.uninitialized;
 
   if (!logged) {
     var q = $("#q");
@@ -1277,6 +1358,9 @@ function bindEvents() {
   var loginForm = $("#loginForm");
   if (loginForm) loginForm.addEventListener("submit", doLogin);
 
+  var copyBtn = $("#copyCmd");
+  if (copyBtn) copyBtn.addEventListener("click", copyInitCommand);
+
   var consoleView = $("#consoleView");
   if (consoleView) {
     consoleView.addEventListener("click", function (e) {
@@ -1287,6 +1371,7 @@ function bindEvents() {
       if (action === "logout") {
         doLogout();
       } else if (action === "add") {
+        if (!canWrite()) { showToast("没有权限执行该操作", "error"); return; }
         openJobModal(null);
       } else if (action === "edit") {
         if (!canWrite()) { showToast("没有权限执行该操作", "error"); return; }

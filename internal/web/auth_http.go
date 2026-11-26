@@ -156,6 +156,13 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 一个账号都没有时，任何密码都不可能正确。此时直接告知「未初始化」，
+	// 既不消耗失败次数（否则会把用户锁进 429），也避免误导用户以为密码打错了。
+	if s.users.Count() == 0 {
+		writeError(w, http.StatusUnauthorized, "AUTH_NOT_INITIALIZED", "后台尚未初始化，请先在服务器上创建管理员账号")
+		return
+	}
+
 	user, err := s.users.Verify(username, req.Password)
 	if err != nil {
 		loginLimiter.fail(key, now)
@@ -265,8 +272,17 @@ const (
 //
 // 不信任会话里的角色快照：用户被删除或禁用时立即销毁会话拒绝放行，
 // 角色变更时以用户库为准覆盖 sess.Role，使降级/升级即时生效。
+// authenticate 解析请求身份，并**每次**回查用户库确认账号仍然可用。
+//
+// 返回 state 用于区分三种拒绝原因：未初始化（一个账号都没有）、未登录、正常。
 func (s *Server) authenticate(r *http.Request) (auth.Session, auth.PublicUser, authState) {
 	if s.sessions == nil || s.users == nil {
+		return auth.Session{}, auth.PublicUser{}, authStateNoUsers
+	}
+	// 「有用户存储但一个账号都没有」同样属于未初始化：
+	// 生产环境里 store 永远非 nil，所以只判断 users==nil 会让首次部署
+	// 落进「密码错误」分支，把用户引向反复试错。
+	if s.users.Count() == 0 {
 		return auth.Session{}, auth.PublicUser{}, authStateNoUsers
 	}
 
