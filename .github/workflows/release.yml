@@ -20,13 +20,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: 检出代码
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           # 变更日志要按 tag 区间遍历历史，必须取全量历史与标签
           fetch-depth: 0
 
       - name: 安装 Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version: "1.22"
           cache: false
@@ -74,7 +74,9 @@ jobs:
           ./dist/jobworkspace-linux-amd64 platforms
           # V2 起采集只剩联网模式，不再有 --mode/--file；
           # CI 里不发真实网络请求，只校验子命令与关键参数仍然可用。
-          ./dist/jobworkspace-linux-amd64 collect --help | grep -q -- '--allow-disallowed'
+          # Go 的 flag 包把 --help 用法写到 stderr，且用单横线显示参数名，
+          # 因此必须 2>&1 合并后再按 -allow-disallowed 匹配。
+          ./dist/jobworkspace-linux-amd64 collect --help 2>&1 | grep -q -- '-allow-disallowed'
 
       - name: 生成变更日志
         run: |
