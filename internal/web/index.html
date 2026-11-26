@@ -715,7 +715,7 @@ svg{display:block}
         <svg class="i" aria-hidden="true"><use href="#i-close"></use></svg>
       </button>
     </div>
-    <p class="panel__desc">采集会调用服务端联网抓取，最长等待 120 秒。</p>
+    <p class="panel__desc">服务端采集需要 BOSS 登录态（cookie），失效后要重新配置。日常增量更推荐用浏览器扩展采集，不需要 cookie。</p>
     <form id="collectForm" autocomplete="off">
       <label class="form-row">
         <span>关键词</span>
@@ -1880,6 +1880,10 @@ async function submitCollect(event) {
 
     if (!out.ok || !data || data.ok !== true) {
       var msg = out.network ? "网络异常" : ((data && (data.message || data.error)) ? data.message || data.error : ("HTTP " + out.status));
+      if (data && data.error === "AUTH_REQUIRED") {
+        msg += "\n服务器上没有 BOSS 登录态。日常采集建议改用浏览器扩展（装好后翻页即入库）；" +
+               "也可以把 cookie 放到服务器后重试。";
+      }
       if (data && data.detail) msg += "\n" + data.detail;
       if (status) {
         status.hidden = false;

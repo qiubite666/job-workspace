@@ -388,9 +388,27 @@ func (s *Server) handleCollect(w http.ResponseWriter, r *http.Request) {
 	if runErr != nil {
 		code := "COLLECT_FAILED"
 		msg := "采集失败：" + runErr.Error()
+
+		// 子进程的退出码只是 "exit status 2"，真正原因在 stdout 报告的 errors 里。
+		// 优先把它提炼成一句人话，比把整段 JSON 丢给前端有用得多。
+		structured := ""
+		if parsed, ok := parseCollectOutput(stdout.String()); ok && parsed.Report != nil {
+			if first := describeCollectFailure(parsed.Report); first != "" {
+				structured = first
+				msg = first
+				if c := firstErrorCode(parsed.Report); c != "" {
+					code = c
+				}
+			}
+		}
+
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 			code = "TIMEOUT"
 			msg = "采集超时（超过 " + collectTimeout.String() + "）"
+		}
+		// 已提炼出结构化原因时不再回传原始 JSON，避免前端把它们拼成一坨。
+		if structured != "" {
+			detail = ""
 		}
 		s.log.Error("采集失败", "err", runErr, "code", code, "stderr", detail)
 		writeJSON(w, http.StatusInternalServerError, map[string]any{
@@ -656,4 +674,46 @@ func withLogging(log *slog.Logger, next http.Handler) http.Handler {
 			"took", time.Since(start).Milliseconds(),
 		)
 	})
+}
+
+// describeCollectFailure 从采集报告里提炼第一处失败原因。
+//
+// 报告按平台顺序排列，取第一个有 error 的平台即可——多个平台同时失败时，
+// 前半句才是用户当下要解决的问题，全都列出来只会变成噪音。
+func describeCollectFailure(r *model.Report) string {
+	for _, p := range r.Platforms {
+		if len(p.Errors) == 0 {
+			continue
+		}
+		e := p.Errors[0]
+		name := strings.TrimSpace(p.Name)
+		if name == "" {
+			name = p.ID
+		}
+		msg := strings.TrimSpace(e.Message)
+		if msg == "" {
+			msg = "采集失败"
+		}
+		return name + "：" + msg
+	}
+	for _, p := range r.Platforms {
+		if p.Status == "failed" {
+			name := strings.TrimSpace(p.Name)
+			if name == "" {
+				name = p.ID
+			}
+			return name + "：采集失败（无详细错误）"
+		}
+	}
+	return ""
+}
+
+// firstErrorCode 取第一处错误的错误码，供前端按码分支处理。
+func firstErrorCode(r *model.Report) string {
+	for _, p := range r.Platforms {
+		if len(p.Errors) > 0 {
+			return strings.TrimSpace(p.Errors[0].Code)
+		}
+	}
+	return ""
 }
