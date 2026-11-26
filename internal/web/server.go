@@ -29,6 +29,7 @@ import (
 	"jobworkspace/internal/config"
 	"jobworkspace/internal/model"
 	"jobworkspace/internal/store"
+	"jobworkspace/internal/userdata"
 
 	"log/slog"
 )
@@ -70,6 +71,9 @@ type Server struct {
 	// cookieFile 是登录态 cookie 的文件路径（可为空）。
 	// 只存路径不存值：采集子进程自己读文件，避免凭据出现在命令行参数里。
 	cookieFile string
+
+	// userState 存放每个账号的收藏 / 投递状态 / 备注，路径为 <data>/userstate。
+	userState *userdata.Store
 }
 
 // SetCookieFile 设置采集子进程使用的 cookie 文件路径。
@@ -104,17 +108,26 @@ func New(cfg *config.Config, st *store.Store, log *slog.Logger) *Server {
 		} else if s.users.Count() == 0 {
 			log.Warn("尚未创建任何后台账号，请先执行 `jobworkspace user add --username admin`")
 		}
+
+		// 每个账号的收藏 / 投递状态 / 备注，落在 <data>/userstate/<username>.json。
+		s.userState = userdata.NewStore(filepath.Join(st.Dir(), "userstate"))
 	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /", s.handleIndex)
 	mux.HandleFunc("GET /admin", s.handleAdminPage)
+	// 健康检查与平台清单是静态信息，保持公开：前者供监控探活，
+	// 后者是内置配置（不含任何用户数据），登录前就要用来渲染采集面板。
 	mux.HandleFunc("GET /api/health", s.handleHealth)
-	mux.HandleFunc("GET /api/jobs", s.handleJobs)
 	mux.HandleFunc("GET /api/platforms", s.handlePlatforms)
 
-	// 采集会真实发起外部请求，v1.1 起要求登录；未初始化账号时该接口不可用。
+	// 岗位数据与采集自 v2 起要求登录。
+	mux.HandleFunc("GET /api/jobs", s.requireAuth(s.handleJobs))
 	mux.HandleFunc("POST /api/collect", s.requireAuth(s.handleCollect))
+
+	// 当前登录用户自己的收藏 / 投递状态 / 备注，按账号隔离。
+	mux.HandleFunc("GET /api/me/state", s.requireAuth(s.handleGetMyState))
+	mux.HandleFunc("PUT /api/me/state", s.requireAuth(s.handlePutMyState))
 
 	// 认证
 	mux.HandleFunc("POST /api/auth/login", s.handleLogin)
@@ -277,7 +290,6 @@ type collectRequest struct {
 	Query           string `json:"query"`
 	City            string `json:"city"`
 	Pages           int    `json:"pages"`
-	Mode            string `json:"mode"`
 	AllowDisallowed bool   `json:"allowDisallowed"`
 }
 
@@ -295,14 +307,6 @@ func (s *Server) handleCollect(w http.ResponseWriter, r *http.Request) {
 	req.Query = strings.TrimSpace(req.Query)
 	if req.Query == "" {
 		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "关键词不能为空")
-		return
-	}
-	switch req.Mode {
-	case "":
-		req.Mode = "sample"
-	case "sample", "local", "live":
-	default:
-		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "未知的采集模式："+req.Mode)
 		return
 	}
 	if req.Pages <= 0 {
@@ -333,7 +337,6 @@ func (s *Server) handleCollect(w http.ResponseWriter, r *http.Request) {
 
 	args := []string{
 		"collect",
-		"--mode=" + req.Mode,
 		"--query=" + req.Query,
 		"--city=" + req.City,
 		"--pages=" + strconv.Itoa(req.Pages),
@@ -358,9 +361,14 @@ func (s *Server) handleCollect(w http.ResponseWriter, r *http.Request) {
 		cmd.Dir = wd
 	}
 
-	s.log.Info("开始采集", "query", req.Query, "city", req.City, "pages", req.Pages, "mode", req.Mode, "allowDisallowed", req.AllowDisallowed)
+	s.log.Info("开始采集", "query", req.Query, "city", req.City, "pages", req.Pages, "allowDisallowed", req.AllowDisallowed)
 	runErr := cmd.Run()
 	detail := tailRunes(stderr.String(), stderrTailLimit)
+	// 子进程带 --json --quiet 运行时，错误信息在 stdout 的 report 里，stderr 是空的。
+	// 失败时把 stdout 也作为 detail 兜底，否则前端只能看到无信息量的 "exit status 2"。
+	if detail == "" {
+		detail = tailRunes(stdout.String(), stderrTailLimit)
+	}
 
 	if runErr != nil {
 		code := "COLLECT_FAILED"
