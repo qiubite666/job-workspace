@@ -131,7 +131,9 @@
       "minDelayMs": 3000,
       "maxDelayMs": 6000,
       "respectRobots": true,
-      "allowDisallowed": false
+      "allowDisallowed": false,
+      "activeOnlinePath": "bossOnline",
+      "activeTimePath": "lastModifyTime"
     },
     "liepin": {
       "id": "liepin",

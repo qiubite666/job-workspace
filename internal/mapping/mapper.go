@@ -28,6 +28,8 @@ type Spec struct {
 	FieldMap         map[string][]string // canonical 字段 -> 候选路径
 	PublishTimePaths []string            // 发布时间候选路径
 	JobURLTemplate   string              // 支持 {{externalId}} 占位
+	ActiveOnlinePath string              // 招聘者在线状态的路径（布尔）
+	ActiveTimePath   string              // 招聘者最近活跃时间的路径（毫秒时间戳）
 }
 
 // Context 是收口阶段的外部上下文（来自一次采集的参数与时间）。
@@ -153,6 +155,10 @@ func BuildDraft(raw map[string]any, spec Spec) model.JobDraft {
 		BrandScaleName:   pickString(raw, spec, fieldBrandScaleName),
 		BrandStageName:   pickString(raw, spec, fieldBrandStageName),
 		PublishedRaw:     pickPublishRaw(raw, spec.PublishTimePaths),
+	}
+
+	if strings.TrimSpace(d.ActiveTimeDesc) == "" {
+		d.ActiveTimeDesc = activeDescFromStatus(raw, spec.ActiveOnlinePath, spec.ActiveTimePath)
 	}
 
 	d.JobURL = buildJobURL(raw, spec, d.ExternalID)
@@ -592,4 +598,74 @@ func plainText(s string) string {
 		out = append(out, line)
 	}
 	return strings.TrimSpace(strings.Join(out, "\n"))
+}
+
+// activeDescFromStatus 把「是否在线 + 最近活跃时间戳」收敛成一句人话。
+//
+// BOSS 列表接口给的是 bossOnline（布尔）与 activeTime（毫秒时间戳），
+// 而不是现成的文案，所以在这里做一次归一，产出与 bossActiveTimeDesc 同语义的短句。
+func activeDescFromStatus(raw map[string]any, onlinePath, timePath string) string {
+	if p := strings.TrimSpace(onlinePath); p != "" {
+		if v, ok := ReadPath(raw, p); ok {
+			if b, isBool := v.(bool); isBool && b {
+				return "在线"
+			}
+		}
+	}
+	p := strings.TrimSpace(timePath)
+	if p == "" {
+		return ""
+	}
+	v, ok := ReadPath(raw, p)
+	if !ok {
+		return ""
+	}
+	ms, ok := toMillis(v)
+	if !ok || ms <= 0 {
+		return ""
+	}
+	diff := time.Since(time.UnixMilli(ms))
+	switch {
+	case diff < time.Hour:
+		return "刚刚活跃"
+	case diff < 24*time.Hour:
+		return strconv.Itoa(int(diff.Hours())) + "小时前活跃"
+	case diff < 30*24*time.Hour:
+		return strconv.Itoa(int(diff.Hours()/24)) + "天前活跃"
+	default:
+		return ""
+	}
+}
+
+// toMillis 把毫秒时间戳的各种数值形态转成 int64。
+func toMillis(v any) (int64, bool) {
+	switch x := v.(type) {
+	case float64:
+		return int64(x), true
+	case int64:
+		return x, true
+	case int:
+		return int64(x), true
+	case json.Number:
+		n, err := x.Int64()
+		if err != nil {
+			f, ferr := x.Float64()
+			if ferr != nil {
+				return 0, false
+			}
+			return int64(f), true
+		}
+		return n, true
+	case string:
+		s := strings.TrimSpace(x)
+		if s == "" {
+			return 0, false
+		}
+		n, err := strconv.ParseInt(s, 10, 64)
+		if err != nil {
+			return 0, false
+		}
+		return n, true
+	}
+	return 0, false
 }

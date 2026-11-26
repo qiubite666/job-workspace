@@ -163,6 +163,8 @@ func (a *Adapter) MapItem(rt *platform.Runtime, raw map[string]any) (model.JobDr
 		FieldMap:         a.spec.FieldMap,
 		PublishTimePaths: a.spec.PublishTimePaths,
 		JobURLTemplate:   a.spec.JobURLTemplate,
+		ActiveOnlinePath: a.spec.ActiveOnlinePath,
+		ActiveTimePath:   a.spec.ActiveTimePath,
 	})
 	if a.spec.PostMap != nil {
 		a.spec.PostMap(rt, &draft, raw)

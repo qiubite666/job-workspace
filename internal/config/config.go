@@ -71,6 +71,8 @@ type Platform struct {
 	QueryParams      map[string]string   `json:"queryParams"`      // 查询参数模板，值支持 {{query}} 等占位符
 	ListPath         string              `json:"listPath"`         // 列表数组的点路径，空则期望顶层数组
 	HasMorePath      string              `json:"hasMorePath"`      // 是否还有下一页的点路径
+	ActiveOnlinePath string              `json:"activeOnlinePath"` // 招聘者是否在线（布尔）点路径
+	ActiveTimePath   string              `json:"activeTimePath"`   // 招聘者最近活跃时间（毫秒时间戳）点路径
 	CodeField        string              `json:"codeField"`        // 业务码字段点路径
 	MessageField     string              `json:"messageField"`     // 业务消息字段点路径
 	SuccessCodes     []string            `json:"successCodes"`     // 视为成功的业务码；空则只有 "0" 成功

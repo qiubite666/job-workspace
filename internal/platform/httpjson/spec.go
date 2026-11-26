@@ -33,10 +33,12 @@ type Spec struct {
 	Headers        map[string]string // 额外请求头
 	CookieEnv      string            // 登录态环境变量名
 
-	ListPath     string // 列表数组点路径，空则期望顶层数组
-	HasMorePath  string // 是否还有下一页的布尔点路径
-	CodeField    string // 业务码点路径
-	MessageField string // 业务消息点路径
+	ListPath         string // 列表数组点路径，空则期望顶层数组
+	HasMorePath      string // 是否还有下一页的布尔点路径
+	ActiveOnlinePath string // 招聘者在线状态的布尔点路径
+	ActiveTimePath   string // 招聘者最近活跃时间的毫秒时间戳点路径
+	CodeField        string // 业务码点路径
+	MessageField     string // 业务消息点路径
 
 	SuccessCodes []string          // 视为成功的业务码；空则只有 "0" 成功
 	ErrorCodes   map[string]string // 业务码 -> errs.Code 的显式映射
@@ -74,6 +76,8 @@ func SpecFromConfig(p *config.Platform) Spec {
 		CookieEnv:        p.CookieEnv,
 		ListPath:         p.ListPath,
 		HasMorePath:      p.HasMorePath,
+		ActiveOnlinePath: p.ActiveOnlinePath,
+		ActiveTimePath:   p.ActiveTimePath,
 		CodeField:        p.CodeField,
 		MessageField:     p.MessageField,
 		SuccessCodes:     copySlice(p.SuccessCodes),
