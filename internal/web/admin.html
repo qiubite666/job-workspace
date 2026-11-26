@@ -623,8 +623,7 @@ function esc(value) {
   });
 }
 
-function setText(sel, text) {
-  var el = $(sel);
+function setText(sel, text) {  var el = $(sel);
   if (el) el.textContent = text === null || text === undefined ? "" : String(text);
 }
 
@@ -848,7 +847,11 @@ function fieldValue(job, key) {
   }
   if (key === "publishedAt") {
     var text = String(job.publishedAt || "");
-    return /^\d{4}-\d{2}-\d{2}/.test(text) ? text.slice(0, 10) : "";
+    if (!text) return "";
+    if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+    var date = new Date(text);
+    if (isNaN(date.getTime())) return /^\d{4}-\d{2}-\d{2}/.test(text) ? text.slice(0, 10) : "";
+    return date.getFullYear() + "-" + pad2(date.getMonth() + 1) + "-" + pad2(date.getDate());
   }
   var value = job[key];
   return value === null || value === undefined ? "" : String(value);

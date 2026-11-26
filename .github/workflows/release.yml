@@ -42,6 +42,9 @@ jobs:
         run: |
           set -euo pipefail
           TAG="${GITHUB_REF_NAME}"
+          # 注入的是纯 semver（1.1.0），不带 v 前缀：
+          # 用法行与 /api/health 里的 v 由程序自己输出，避免出现 vv1.1.0。
+          VER="${TAG#v}"
           mkdir -p dist
           for target in linux/amd64 linux/arm64; do
             os="${target%/*}"
@@ -50,7 +53,7 @@ jobs:
             echo "==> ${out}"
             CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" \
               go build -trimpath \
-                -ldflags "-s -w -X jobworkspace/internal/version.Version=${TAG}" \
+                -ldflags "-s -w -X jobworkspace/internal/version.Version=${VER}" \
                 -o "$out" .
           done
           cd dist
