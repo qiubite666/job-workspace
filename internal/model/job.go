@@ -47,6 +47,9 @@ type Job struct {
 	PublishedAt       string `json:"publishedAt"`       // RFC3339；无则为 ""
 	PublishedAtSource string `json:"publishedAtSource"` // api | detail | missing
 	JobURL            string `json:"jobUrl"`            // 职位详情链接
+	// SecurityID 是 BOSS 详情页的访问凭据，缺了它打开链接会落到空页面，
+	// 页面不会请求详情接口，扩展也就抓不到 JD。
+	SecurityID string `json:"securityId"`
 
 	BrandIndustry  string `json:"brandIndustry"`  // 公司行业
 	BrandScaleName string `json:"brandScaleName"` // 公司规模
@@ -62,6 +65,7 @@ type Job struct {
 // 这些统一由 mapping.Finalize 完成，保证各平台解析口径一致。
 type JobDraft struct {
 	ExternalID       string
+	SecurityID       string
 	JobName          string
 	BrandName        string
 	CityName         string

@@ -10,6 +10,7 @@ import (
 	"crypto/sha1" // 仅用于生成确定性 ID 摘要，非安全用途
 	"encoding/hex"
 	"encoding/json"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -42,6 +43,7 @@ type Context struct {
 // canonical 字段名常量，避免 FieldMap 的 key 拼写漂移。
 const (
 	fieldExternalID       = "externalId"
+	fieldSecurityID       = "securityId"
 	fieldJobName          = "jobName"
 	fieldBrandName        = "brandName"
 	fieldCityName         = "cityName"
@@ -136,6 +138,7 @@ func ReadStrings(obj map[string]any, path string) []string {
 func BuildDraft(raw map[string]any, spec Spec) model.JobDraft {
 	d := model.JobDraft{
 		ExternalID:       pickString(raw, spec, fieldExternalID),
+		SecurityID:       pickString(raw, spec, fieldSecurityID),
 		JobName:          pickString(raw, spec, fieldJobName),
 		BrandName:        pickString(raw, spec, fieldBrandName),
 		CityName:         pickString(raw, spec, fieldCityName),
@@ -204,7 +207,8 @@ func Finalize(d model.JobDraft, spec Spec, ctx Context) model.Job {
 		BossTitle:        strings.TrimSpace(d.BossTitle),
 		ActiveTimeDesc:   strings.TrimSpace(d.ActiveTimeDesc),
 		Description:      plainText(d.Description),
-		JobURL:           strings.TrimSpace(d.JobURL),
+		JobURL:           withSecurityID(strings.TrimSpace(d.JobURL), strings.TrimSpace(d.SecurityID)),
+		SecurityID:       strings.TrimSpace(d.SecurityID),
 		BrandIndustry:    strings.TrimSpace(d.BrandIndustry),
 		BrandScaleName:   strings.TrimSpace(d.BrandScaleName),
 		BrandStageName:   strings.TrimSpace(d.BrandStageName),
@@ -692,4 +696,23 @@ func isDigitsOnly(s string) bool {
 		}
 	}
 	return true
+}
+
+// withSecurityID 给详情链接补上 securityId。
+//
+// BOSS 的 /job_detail/<id>.html 必须带 ?securityId=... 才能打开真实职位页；
+// 列表接口本身就返回这个值，不带的话点开是空壳页面，不会请求详情接口，
+// 扩展自然抓不到职位描述。
+func withSecurityID(jobURL, securityID string) string {
+	if jobURL == "" || securityID == "" {
+		return jobURL
+	}
+	if strings.Contains(jobURL, "securityId=") {
+		return jobURL
+	}
+	sep := "?"
+	if strings.Contains(jobURL, "?") {
+		sep = "&"
+	}
+	return jobURL + sep + "securityId=" + url.QueryEscape(securityID)
 }

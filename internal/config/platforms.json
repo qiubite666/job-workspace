@@ -107,6 +107,9 @@
           "postDescription",
           "jobDescription",
           "description"
+        ],
+        "securityId": [
+          "securityId"
         ]
       },
       "publishTimePaths": [
