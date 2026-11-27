@@ -174,8 +174,10 @@ var AUTOFILL_LIMIT = 20;
 function describeAutofill(state) {
   if (!state || (!state.running && !state.done)) return "批量补 JD：未运行";
   if (state.running) {
-    return "批量补 JD：进行中 " + state.done + "/" + state.total
+    var line = "批量补 JD：进行中 " + state.done + "/" + state.total
       + (state.failed ? "，失败 " + state.failed : "");
+    if (state.lastError) line += "（" + state.lastError + "）";
+    return line;
   }
   if (state.reason === "DONE") return "批量补 JD：完成 " + state.done + " 条";
   if (state.lastError && state.failed) {
