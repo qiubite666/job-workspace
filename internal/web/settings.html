@@ -1169,6 +1169,11 @@ function bindEvents() {
         var picker = $("#importFile");
         if (picker) picker.click();
       } else if (action === "open-clear") openClear();
+      else if (action === "autofill-start") startAutofillFromPage();
+      else if (action === "autofill-stop") {
+        postToBridge({ type: "AUTOFILL_STOP" });
+        setFillStatus("已请求停止…");
+      }
     });
   }
 
@@ -1241,7 +1246,7 @@ async function boot() {
   if (loading) loading.hidden = true;
 
   refreshAll();
-  await Promise.all([loadCredentials(), loadJobCount()]);
+  await Promise.all([loadCredentials(), loadJobCount(), loadPendingCount()]);
 }
 
 if (document.readyState === "loading") {
