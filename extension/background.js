@@ -250,13 +250,6 @@ chrome.runtime.onMessage.addListener(function (message, sender, sendResponse) {
   });
 
   handleIngest(message.payload).then(function (res) {
-    // 批量补全正在等这一条：只有真正的详情包才算数
-    if (autofillWaiter && message.payload && message.payload.kind === "detail"
-        && String(message.payload.jobId || "") === autofillWaiter.externalId) {
-      autofillWaiter.resolve(res && res.ok === true
-        ? { ok: true }
-        : { ok: false, error: (res && res.error) || "INGEST_FAILED" });
-    }
     sendResponse(res);
   }, function (err) {
     markFailure();

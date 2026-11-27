@@ -112,6 +112,7 @@ function createHarness(options) {
     store,
     calls,
     start: (limit) => new Promise((resolve) => messageHandler({ type: "BOSS_AUTOFILL_START", limit }, {}, resolve)),
+    relay: (payload) => new Promise((resolve) => messageHandler({ type: "BOSS_INGEST_RELAY", payload }, {}, resolve)),
     stop: () => messageHandler({ type: "BOSS_AUTOFILL_STOP" }, {}, () => {})
   };
 }
@@ -157,14 +158,22 @@ function check(name, ok, detail) {
       h.calls.ingestedJobIds.join(",") === "a1,b2,c3", h.calls.ingestedJobIds.join(","));
   }
 
-  // 用例 2：无模板时应拒绝启动
+  // 用例 2：中继上报不能抛异常（曾因残留 autofillWaiter 引用报 ReferenceError）
+  {
+    const h = createHarness();
+    await h.relay({ platform: "boss", kind: "detail", jobId: "x1", raw: { zpData: { jobInfo: { jobName: "x" } } } });
+    await sleep(50);
+    check("中继上报不抛异常且能入库", h.calls.ingest === 1, "ingest=" + h.calls.ingest);
+  }
+
+  // 用例 3：无模板时应拒绝启动
   {
     const h = createHarness({ store: { lastDetailSource: "" } });
     const start = await h.start(3);
     check("无模板时提示 NEED_MANUAL", start && start.error === "NEED_MANUAL", JSON.stringify(start));
   }
 
-  // 用例 3：连续失败熔断
+  // 用例 4：连续失败熔断
   {
     const h = createHarness({ failSendMessage: true });
     await h.start(3);
