@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <title>BOSS 岗位采集桥</title>
 <style>
+  .ver { margin-left: 6px; font-size: 11px; color: #8b949e; }
   .hint { margin: 6px 0 0; font-size: 11px; line-height: 1.5; color: #8b949e; }
   * { box-sizing: border-box; }
   body {
@@ -54,7 +55,7 @@
 </head>
 <body>
   <h1>BOSS 岗位采集桥</h1>
-  <p class="sub">旁听页面岗位响应并上报；不读取任何登录凭据。</p>
+  <p class="sub">旁听页面岗位响应并上报；不读取任何登录凭据。<span id="ver" class="ver"></span></p>
 
   <label for="serverUrl">服务端地址</label>
   <input id="serverUrl" type="text" placeholder="https://job.qiubite.fun" autocomplete="off" spellcheck="false">

@@ -226,6 +226,11 @@ async function stopAutofill() {
 
 async function init() {
   try {
+    var el = document.getElementById("ver");
+    if (el) el.textContent = "v" + chrome.runtime.getManifest().version;
+  } catch (e) { /* 忽略 */ }
+
+  try {
     var cfg = await chrome.storage.local.get(["serverUrl", "token", "lastListResult", "lastDetailResult"]);
     els.serverUrl.value = cfg.serverUrl || "";
     els.token.value = cfg.token || "";
