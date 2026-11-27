@@ -433,6 +433,9 @@ svg{display:block}
 
 /* ---------- 职位描述入口 ---------- */
 .job__extra{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}
+/* 待补 JD：是链接不是按钮，去掉下划线，用虚线边框与"可点"区分 */
+.job__jd--todo{text-decoration:none;border-style:dashed;color:var(--muted)}
+.job__jd--todo:hover{color:var(--primary);border-color:var(--primary)}
 .job__jd{
   display:inline-flex;align-items:center;gap:6px;min-height:38px;padding:0 12px;max-width:100%;
   border:1px solid rgba(0,0,0,.1);border-radius:10px;background:transparent;
@@ -748,6 +751,14 @@ svg{display:block}
         <svg class="i field__caret" aria-hidden="true"><use href="#i-caret"></use></svg>
       </label>
       <label class="field field--select">
+        <select id="fJd" aria-label="职位描述筛选">
+          <option value="all">不限描述</option>
+          <option value="missing">仅缺职位描述</option>
+          <option value="has">已有职位描述</option>
+        </select>
+        <svg class="i field__caret" aria-hidden="true"><use href="#i-caret"></use></svg>
+      </label>
+      <label class="field field--select">
         <select id="fSort" aria-label="排序方式">
           <option value="smart">综合排序</option>
           <option value="latest">最新发布</option>
@@ -933,7 +944,7 @@ var visibleCount = PAGE_SIZE;
 var state = defaultState();
 
 /* 纯界面状态，不持久化 */
-var ui = { keyword: "", city: "", salary: "all", exp: "all", sort: "smart", view: "card", noteId: null, detailId: null };
+var ui = { keyword: "", city: "", salary: "all", exp: "all", jdFilter: "all", sort: "smart", view: "card", noteId: null, detailId: null };
 
 /* 登录态状态机：checking → anonymous | authenticated */
 var auth = { user: null, checking: true, busy: false, error: "", uninitialized: false };
@@ -1483,6 +1494,7 @@ function filterJobs(list, filters) {
   var city = String(filters.city || "").trim().toLowerCase();
   var salary = filters.salary || "all";
   var exp = filters.exp || "all";
+  var jdFilter = filters.jdFilter || "all";
 
   return list.filter(function (job) {
     if (keyword) {
@@ -1498,6 +1510,10 @@ function filterJobs(list, filters) {
     }
     if (salary !== "all" && salaryBucket(job) !== salary) return false;
     if (exp !== "all" && expBucket(job.experience) !== exp) return false;
+    /* 缺 JD 的判定必须和卡片上的入口一致：都用 jdText()，
+       否则会出现"卡片显示去补 JD 但筛选认为是已有"的矛盾。 */
+    if (jdFilter === "missing" && jdText(job)) return false;
+    if (jdFilter === "has" && !jdText(job)) return false;
     return true;
   });
 }
@@ -1591,7 +1607,8 @@ function renderShell() {
   var name = $("#userName");
   if (name) name.textContent = auth.user.displayName || auth.user.username;
   var admin = $("#adminLink");
-  if (admin) admin.hidden = auth.user.role !== "admin";
+  // 管理后台只属于内置 admin 账号：角色不等于账号，别人被提成 admin 也看不到。
+  if (admin) admin.hidden = String(auth.user.username || "").toLowerCase() !== "admin";
 }
 
 function renderHeader() {
@@ -1773,12 +1790,22 @@ function noteHTML(job) {
 
 /* 职位描述入口：列表接口不返回 description，只有扩展回填后这里才会出现按钮 */
 function jdHTML(job) {
-  if (!jdText(job)) return "";
+  if (jdText(job)) {
+    return '<div class="job__extra">'
+      + '<button class="job__jd" type="button" data-action="jd" data-id="' + esc(job.id) + '" title="查看完整职位描述">'
+      + '<svg class="i" aria-hidden="true"><use href="#i-note"></use></svg>'
+      + '<span class="job__jd-text">职位描述</span>'
+      + "</button></div>";
+  }
+  /* 没有描述时给一条直达路径：打开原职位页，扩展会自动把 JD 补回来。
+     这是唯一能拿到描述的方式——列表接口本身不返回正文。 */
+  if (!job.jobUrl) return "";
   return '<div class="job__extra">'
-    + '<button class="job__jd" type="button" data-action="jd" data-id="' + esc(job.id) + '" title="查看完整职位描述">'
+    + '<a class="job__jd job__jd--todo" href="' + esc(job.jobUrl) + '" target="_blank" rel="noopener noreferrer"'
+    + ' title="在 BOSS 打开该职位，扩展会自动补全职位描述">'
     + '<svg class="i" aria-hidden="true"><use href="#i-note"></use></svg>'
-    + '<span class="job__jd-text">职位描述</span>'
-    + "</button></div>";
+    + '<span class="job__jd-text">去补 JD</span>'
+    + "</a></div>";
 }
 
 function cardHTML(job, index) {
@@ -2428,6 +2455,7 @@ function bindEvents() {
       var id = e.target.id;
       if (id === "fSalary") ui.salary = e.target.value;
       else if (id === "fExp") ui.exp = e.target.value;
+      else if (id === "fJd") ui.jdFilter = e.target.value;
       else if (id === "fSort") ui.sort = e.target.value;
       else return;
       visibleCount = PAGE_SIZE;

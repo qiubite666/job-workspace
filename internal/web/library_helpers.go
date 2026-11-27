@@ -100,3 +100,14 @@ func readCollectedJobs(path string) ([]model.Job, error) {
 	}
 	return jobs, nil
 }
+
+// superAdminUsername 是内置超级管理员账号名。
+//
+// 管理后台按"账号"而非"角色"开放：角色只描述权限集合，而这里表达的是
+// "谁是这个部署的所有者"。即使把别人的角色改成 admin，也不该看到管理后台。
+const superAdminUsername = "admin"
+
+// isSuperAdmin 判断是否为内置超级管理员账号。
+func isSuperAdmin(username string) bool {
+	return strings.EqualFold(strings.TrimSpace(username), superAdminUsername)
+}

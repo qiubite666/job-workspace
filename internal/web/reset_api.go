@@ -48,6 +48,12 @@ func (s *Server) handleAdminReset(w http.ResponseWriter, r *http.Request) {
 	if sess, ok := s.currentSession(r); ok {
 		who = sess.Username
 	}
+	// 双重闸门：除了 admin 角色，还必须是内置超管账号。
+	if !isSuperAdmin(who) {
+		s.log.Warn("非超管账号尝试清空全站数据", "user", who, "ip", clientIP(r))
+		writeError(w, http.StatusForbidden, "FORBIDDEN", "只有内置管理员账号可以执行该操作")
+		return
+	}
 
 	// 职位库改为分账号存放，这里逐个账号清空；账号本身保留。
 	removedJobs := 0

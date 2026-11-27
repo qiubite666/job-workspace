@@ -696,8 +696,12 @@ function showToast(message, kind) {
   showToast._timer = window.setTimeout(function () { el.className = ""; }, 2800);
 }
 
+/* 管理后台按账号开放：只有内置的 admin 账号能进，不看 role。
+   角色可以被改，账号名不会，后者才代表"这个部署的所有者"。 */
+var SUPER_ADMIN = "admin";
+
 function canManage() {
-  return !!state.user && state.user.role === "admin";
+  return !!state.user && String(state.user.username || "").toLowerCase() === SUPER_ADMIN;
 }
 
 function normalizeUser(raw) {
