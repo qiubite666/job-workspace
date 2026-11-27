@@ -1,0 +1,1232 @@
+<!DOCTYPE html>
+<!-- 账号设置单页：上报令牌、采集 cookie、职位库、账号信息；CSS/JS/图标全部内联，零外链、零 emoji -->
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light">
+<meta name="referrer" content="no-referrer">
+<title>账号设置 · 求职工作台</title>
+<style>
+:root{
+  --bg:#fbfbfd;
+  --card:#ffffff;
+  --text:#1d1d1f;
+  --muted:#6e6e73;
+  --faint:#86868b;
+  --line:rgba(0,0,0,.08);
+  --primary:#0071e3;
+  --danger:#d70015;
+  --ok:#1d7a4c;
+  --shadow:0 4px 20px rgba(0,0,0,.04);
+  --shadow-hover:0 10px 30px rgba(0,0,0,.08);
+  --ease:cubic-bezier(.4,0,.2,1);
+  --radius-card:18px;
+}
+*,*::before,*::after{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0;
+  background:var(--bg);
+  color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  font-size:16px;
+  line-height:1.47;
+  -webkit-font-smoothing:antialiased;
+  overflow-x:hidden;
+  padding-bottom:env(safe-area-inset-bottom);
+}
+h1,h2,h3,p{margin:0}
+button,input,select,textarea{font-family:inherit}
+svg{display:block}
+.i{fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;width:20px;height:20px;flex:none}
+:focus-visible{outline:2px solid var(--primary);outline-offset:2px;border-radius:6px}
+[hidden]{display:none !important}
+
+/* ---------- 按钮 ---------- */
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:7px;
+  min-height:44px;padding:0 18px;border-radius:980px;border:1px solid transparent;
+  background:transparent;color:var(--text);font-size:14px;font-weight:500;
+  cursor:pointer;transition:all .28s var(--ease);text-decoration:none;white-space:nowrap;
+}
+.btn .i{width:16px;height:16px}
+.btn--ghost{border-color:rgba(0,0,0,.12);background:rgba(255,255,255,.6)}
+.btn--ghost:hover{background:#fff;border-color:rgba(0,0,0,.18);box-shadow:var(--shadow)}
+.btn--primary{background:var(--primary);color:#fff}
+.btn--primary:hover{background:#0077ed;box-shadow:0 8px 22px rgba(0,113,227,.24)}
+.btn--quiet{color:var(--muted);padding:0 12px}
+.btn--quiet:hover{color:var(--text);background:rgba(0,0,0,.04)}
+.btn--danger{background:var(--danger);border-color:transparent;color:#fff}
+.btn--danger:hover:not(:disabled){background:#b80012}
+.btn--block{width:100%}
+.btn:active{transform:scale(.98)}
+.btn[disabled]{opacity:.55;cursor:default;transform:none;box-shadow:none}
+
+/* ---------- 顶栏 ---------- */
+.topbar{
+  position:sticky;top:0;z-index:40;
+  background:rgba(251,251,253,.72);
+  backdrop-filter:saturate(180%) blur(20px);
+  -webkit-backdrop-filter:saturate(180%) blur(20px);
+  border-bottom:1px solid rgba(0,0,0,.06);
+}
+.topbar__inner{
+  max-width:820px;margin:0 auto;padding:10px 24px;
+  display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;
+}
+.brand{display:flex;align-items:center;gap:10px;min-width:0}
+.brand__mark{
+  width:30px;height:30px;border-radius:9px;background:var(--text);color:#fff;
+  display:flex;align-items:center;justify-content:center;flex:none;
+}
+.brand__mark .i{width:16px;height:16px;stroke-width:1.8}
+.brand__text{min-width:0}
+.brand__title{font-size:15px;font-weight:600;letter-spacing:-.01em;line-height:1.3}
+.brand__sub{font-size:11px;color:var(--muted);letter-spacing:.02em;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.actions .btn{font-size:13px;padding:0 14px}
+.divider{width:1px;height:20px;background:var(--line);flex:none}
+
+/* ---------- 版心 ---------- */
+.wrap{max-width:820px;margin:0 auto;padding:0 24px 44px}
+.loading{
+  max-width:820px;margin:0 auto;padding:56px 24px;text-align:center;
+  color:var(--muted);font-size:14px;
+}
+
+/* ---------- 卡片 ---------- */
+.card{
+  margin-top:20px;background:var(--card);
+  border-radius:var(--radius-card);box-shadow:var(--shadow);overflow:hidden;
+}
+.card__head{
+  display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:16px 22px;border-bottom:1px solid var(--line);flex-wrap:wrap;
+}
+.card__headL{display:flex;align-items:center;gap:9px;min-width:0}
+.card__ico{
+  width:28px;height:28px;border-radius:9px;background:rgba(0,0,0,.045);
+  color:var(--muted);display:flex;align-items:center;justify-content:center;flex:none;
+}
+.card__ico .i{width:15px;height:15px}
+.card__title{font-size:17px;font-weight:600;letter-spacing:-.01em}
+.card__hint{font-size:12px;color:var(--faint)}
+.card__body{padding:20px 22px 18px}
+.card__foot{
+  display:flex;align-items:center;justify-content:flex-start;gap:10px;flex-wrap:wrap;
+  padding:14px 22px;border-top:1px solid var(--line);background:rgba(0,0,0,.012);
+}
+
+/* ---------- 字段 ---------- */
+.field{display:flex;flex-direction:column;gap:7px;min-width:0}
+.lbl{font-size:12px;color:var(--muted);letter-spacing:.04em}
+.hint{font-size:12px;color:var(--muted);line-height:1.65;margin-top:10px;overflow-wrap:anywhere}
+.hint strong{color:var(--text);font-weight:600}
+
+.form-row{display:flex;flex-direction:column;gap:6px;min-width:0;margin:0}
+.form-row textarea{
+  width:100%;min-width:0;padding:12px;border-radius:12px;border:1px solid rgba(0,0,0,.12);
+  background:#fbfbfd;color:var(--text);outline:none;resize:vertical;
+  font-size:16px;line-height:1.5;transition:all .28s var(--ease);
+}
+.form-row textarea::placeholder{color:#a1a1a6}
+.form-row textarea:focus{border-color:var(--primary);background:#fff;box-shadow:0 0 0 3px rgba(0,113,227,.1)}
+.form-row input[type="text"]{
+  width:100%;min-width:0;height:44px;padding:0 12px;border-radius:12px;
+  border:1px solid rgba(0,0,0,.12);background:#fbfbfd;color:var(--text);
+  outline:none;font-size:16px;transition:all .28s var(--ease);
+}
+.form-row input[type="text"]:focus{border-color:var(--primary);background:#fff;box-shadow:0 0 0 3px rgba(0,113,227,.1)}
+
+/* ---------- 令牌行 ---------- */
+.token-row{display:flex;align-items:stretch;gap:10px;flex-wrap:wrap}
+.token{
+  flex:1 1 260px;min-width:0;padding:11px 13px;border-radius:11px;
+  background:#f5f5f7;border:1px solid rgba(0,0,0,.09);
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  font-size:14px;line-height:1.5;letter-spacing:.03em;color:var(--text);
+  white-space:nowrap;overflow-x:auto;overflow-y:hidden;
+  user-select:all;-webkit-user-select:all;overflow-wrap:normal;
+  display:block;
+}
+.token-row .btn{flex:none}
+
+/* ---------- 状态徽标 ---------- */
+.status-line{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+.pill{
+  display:inline-flex;align-items:center;gap:6px;min-height:28px;padding:0 12px;
+  border-radius:980px;background:rgba(0,0,0,.05);color:var(--muted);
+  font-size:12px;letter-spacing:.02em;
+}
+.pill::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor;opacity:.6}
+.pill.is-on{color:var(--ok);background:rgba(29,122,76,.09)}
+.pill.is-on::before{opacity:.85}
+
+/* ---------- 职位库 ---------- */
+.stat{display:flex;align-items:baseline;gap:8px;margin-bottom:16px}
+.stat__num{font-size:34px;font-weight:600;letter-spacing:-.02em;line-height:1.1;font-variant-numeric:tabular-nums}
+.stat__unit{font-size:13px;color:var(--muted)}
+.row-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+
+/* ---------- 账号信息 ---------- */
+.kv{
+  display:grid;grid-template-columns:88px minmax(0,1fr);gap:10px 16px;
+  align-items:baseline;padding:10px 0;border-bottom:1px solid var(--line);
+}
+.kv:last-child{border-bottom:0}
+.kv__k{font-size:13px;color:var(--muted);letter-spacing:.02em}
+.kv__v{font-size:14px;color:var(--text);overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
+
+/* ---------- 浮层 ---------- */
+.overlay{
+  position:fixed;inset:0;z-index:60;
+  background:rgba(0,0,0,.28);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
+  padding:24px;overflow-y:auto;
+  display:flex;align-items:center;justify-content:center;
+}
+.panel{
+  width:100%;max-width:440px;margin:auto;background:var(--card);
+  border-radius:20px;box-shadow:0 24px 60px rgba(0,0,0,.18);
+  padding:26px 28px;animation:rise .3s var(--ease) both;
+}
+.panel__head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:6px}
+.panel__title{font-size:20px;font-weight:600;letter-spacing:-.01em}
+.panel__desc{font-size:13px;color:var(--muted);margin-bottom:18px;line-height:1.7;overflow-wrap:anywhere}
+.panel__desc strong{color:var(--text);font-weight:600}
+.panel__foot{display:flex;justify-content:flex-end;gap:10px;margin-top:16px;flex-wrap:wrap}
+.icon-btn{
+  width:40px;height:40px;display:inline-flex;align-items:center;justify-content:center;
+  border:0;border-radius:980px;background:transparent;color:#b0b0b5;cursor:pointer;
+  transition:all .28s var(--ease);flex:none;
+}
+.icon-btn .i{width:18px;height:18px}
+.icon-btn:hover{background:rgba(0,0,0,.04);color:var(--muted)}
+.icon-btn[disabled]{opacity:.45;cursor:default;background:transparent}
+
+.warn-box{
+  display:flex;gap:10px;padding:12px 14px;border-radius:12px;
+  background:rgba(215,0,21,.055);border:1px solid rgba(215,0,21,.16);
+  font-size:13px;color:var(--text);line-height:1.7;margin-bottom:16px;
+}
+.warn-box .i{width:17px;height:17px;color:var(--danger);margin-top:2px}
+.warn-box b{font-weight:600}
+.danger-lead{font-size:13px;line-height:1.75;color:var(--text);margin-bottom:10px}
+.danger-lead b{font-weight:600}
+.danger-list{margin:0 0 16px;padding-left:18px;font-size:13px;color:var(--muted);line-height:1.75}
+.danger-list li{margin:2px 0}
+.danger-word{
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace;background:rgba(215,0,21,.08);
+  color:var(--danger);padding:1px 6px;border-radius:5px;font-size:13px;
+}
+.reset-status{
+  margin-top:14px;font-size:13px;line-height:1.65;padding:10px 12px;border-radius:10px;
+  background:rgba(215,0,21,.06);color:var(--danger);overflow-wrap:anywhere;
+}
+.reset-status.is-ok{background:rgba(29,122,76,.08);color:var(--ok)}
+
+/* ---------- Toast ---------- */
+#toast{
+  position:fixed;top:calc(16px + env(safe-area-inset-top));right:16px;z-index:80;
+  max-width:min(360px,calc(100vw - 32px));
+  padding:12px 18px;border-radius:14px;
+  background:rgba(29,29,31,.94);color:#fff;font-size:13px;line-height:1.5;
+  box-shadow:0 12px 30px rgba(0,0,0,.18);
+  opacity:0;transform:translateY(-8px);pointer-events:none;
+  transition:all .28s var(--ease);
+}
+#toast.is-on{opacity:1;transform:none}
+#toast.is-success{background:rgba(29,122,76,.96)}
+#toast.is-error{background:rgba(215,0,21,.95)}
+
+@keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+
+/* ---------- 响应式 ---------- */
+@media (max-width:767px){
+  .wrap{padding:0 16px 36px}
+  .topbar__inner{padding:10px 16px;gap:10px}
+  .actions{width:100%;justify-content:flex-start;gap:8px}
+  .actions .btn{font-size:12px;padding:0 12px}
+  .actions .btn .i{width:14px;height:14px}
+  .card{margin-top:16px}
+  .card__head{padding:14px 16px}
+  .card__body{padding:16px}
+  .card__foot{padding:12px 16px}
+  .overlay{padding:16px;align-items:flex-start}
+  .panel{padding:22px 20px;border-radius:18px}
+  .panel__foot .btn{flex:1 1 auto}
+  .kv{grid-template-columns:76px minmax(0,1fr)}
+}
+@media (max-width:430px){
+  .row-actions{width:100%}
+  .row-actions .btn{flex:1 1 132px;min-width:0}
+  .card__foot .btn{flex:1 1 auto}
+  .token-row .btn{width:100%}
+  .token{flex:1 1 100%}
+  .stat__num{font-size:30px}
+  .danger-lead,.danger-list{font-size:12.5px}
+  .overlay{padding:12px}
+  .panel{padding:20px 18px}
+}
+
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{
+    animation-duration:.001ms !important;
+    animation-delay:0ms !important;
+    transition-duration:.001ms !important;
+    scroll-behavior:auto !important;
+  }
+}
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 3.5v2.2M12 18.3v2.2M4.6 7.9l1.9 1.1M17.5 15l1.9 1.1M4.6 16.1l1.9-1.1M17.5 9l1.9-1.1"/></symbol>
+  <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+  <symbol id="i-back" viewBox="0 0 24 24"><path d="M19 12H5"/><path d="m10 7-5 5 5 5"/></symbol>
+  <symbol id="i-logout" viewBox="0 0 24 24"><path d="M14 5H7a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h7"/><path d="M17 8.5 20.5 12 17 15.5"/><path d="M10 12h10"/></symbol>
+  <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="12" r="3.4"/><path d="M11.4 12H21"/><path d="M18 12v3M15 12v2.2"/></symbol>
+  <symbol id="i-cookie" viewBox="0 0 24 24"><path d="M20.5 12.6A4.2 4.2 0 0 1 15 7.1a4 4 0 0 1-4.2-3.4 9 9 0 1 0 9.7 8.9z"/><circle cx="9.5" cy="10.5" r="1"/><circle cx="13" cy="15" r="1"/><circle cx="8.6" cy="15.4" r="1"/></symbol>
+  <symbol id="i-library" viewBox="0 0 24 24"><path d="M4 5.5h6v14H4z"/><path d="M12 5.5h4.2v14H12z"/><path d="m17.6 6.4 2.4-.7 2.6 12.6-2.4.7z"/></symbol>
+  <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8.2" r="3.6"/><path d="M5 20c.8-4 3.6-6 7-6s6.2 2 7 6"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2.5"/><path d="M15 6.5A2.5 2.5 0 0 0 12.5 4H6.5A2.5 2.5 0 0 0 4 6.5v6A2.5 2.5 0 0 0 6.5 15"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.6-5.9"/><path d="M20 4.5V10h-5.5"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v10"/><path d="m8 10.5 4 4 4-4"/><path d="M5 19h14"/></symbol>
+  <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V6"/><path d="m8 9.5 4-4 4 4"/><path d="M5 19h14"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M5 7h14"/><path d="M9.5 7V5h5v2"/><path d="M6.5 7l.9 12a1.6 1.6 0 0 0 1.6 1.5h6a1.6 1.6 0 0 0 1.6-1.5l.9-12"/><path d="M10.5 11v6M13.5 11v6"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 4.5 21 20H3z"/><path d="M12 10v4.4"/><path d="M12 17.2h.01"/></symbol>
+</svg>
+
+<div class="loading" id="loading">正在加载账号设置…</div>
+
+<div id="app" hidden>
+  <header class="topbar">
+    <div class="topbar__inner">
+      <div class="brand">
+        <span class="brand__mark"><svg class="i" aria-hidden="true"><use href="#i-gear"></use></svg></span>
+        <div class="brand__text">
+          <div class="brand__title">账号设置</div>
+          <div class="brand__sub" id="topUser">求职工作台</div>
+        </div>
+      </div>
+      <div class="actions">
+        <a class="btn btn--ghost" href="/">
+          <svg class="i" aria-hidden="true"><use href="#i-back"></use></svg>返回工作台
+        </a>
+        <button class="btn btn--quiet" type="button" data-action="logout">
+          <svg class="i" aria-hidden="true"><use href="#i-logout"></use></svg>退出登录
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap">
+
+    <!-- ============ 卡片一：扩展上报令牌 ============ -->
+    <section class="card" aria-labelledby="tokenTitle">
+      <div class="card__head">
+        <div class="card__headL">
+          <span class="card__ico"><svg class="i" aria-hidden="true"><use href="#i-key"></use></svg></span>
+          <h2 class="card__title" id="tokenTitle">扩展上报令牌</h2>
+        </div>
+        <span class="card__hint">X-Ingest-Token</span>
+      </div>
+      <div class="card__body">
+        <div class="field">
+          <span class="lbl">当前令牌</span>
+          <div class="token-row">
+            <code class="token" id="tokenValue" aria-label="当前账号的上报令牌"></code>
+            <button class="btn btn--ghost" type="button" data-action="copy-token">
+              <svg class="i" aria-hidden="true"><use href="#i-copy"></use></svg>复制
+            </button>
+          </div>
+        </div>
+        <p class="hint">
+          这个令牌只属于当前账号（<strong id="tokenUser"></strong>），填进浏览器扩展的「上报令牌」输入框。
+          重置后旧令牌<strong>立即失效</strong>，需要在扩展里重新填写。
+        </p>
+        <p class="hint" id="tokenCopyNote" role="status" aria-live="polite" hidden></p>
+      </div>
+      <div class="card__foot">
+        <button class="btn btn--ghost" type="button" data-action="open-rotate">
+          <svg class="i" aria-hidden="true"><use href="#i-refresh"></use></svg>重置令牌
+        </button>
+      </div>
+    </section>
+
+    <!-- ============ 卡片二：采集 Cookie ============ -->
+    <section class="card" aria-labelledby="cookieTitle">
+      <div class="card__head">
+        <div class="card__headL">
+          <span class="card__ico"><svg class="i" aria-hidden="true"><use href="#i-cookie"></use></svg></span>
+          <h2 class="card__title" id="cookieTitle">采集 Cookie</h2>
+        </div>
+        <span class="pill" id="cookiePill">未知</span>
+      </div>
+      <div class="card__body">
+        <label class="form-row">
+          <span class="lbl">粘贴新的 cookie</span>
+          <textarea id="cookieInput" rows="4" spellcheck="false" autocomplete="off" autocapitalize="none" placeholder="粘贴浏览器里抓到的 cookie 字符串"></textarea>
+        </label>
+        <div class="row-actions" style="margin-top:12px">
+          <button class="btn btn--primary" type="button" data-action="save-cookie">保存</button>
+          <button class="btn btn--ghost" type="button" data-action="clear-cookie">清除</button>
+        </div>
+        <p class="hint">
+          cookie 仅用于服务端采集，属于当前账号私有，换账号互不影响。
+          出于安全考虑，已保存的 cookie <strong>不会显示</strong>在页面上，只能看到是否已配置。
+        </p>
+      </div>
+    </section>
+
+    <!-- ============ 卡片三：职位库 ============ -->
+    <section class="card" aria-labelledby="libTitle">
+      <div class="card__head">
+        <div class="card__headL">
+          <span class="card__ico"><svg class="i" aria-hidden="true"><use href="#i-library"></use></svg></span>
+          <h2 class="card__title" id="libTitle">职位库</h2>
+        </div>
+        <span class="card__hint">仅当前账号</span>
+      </div>
+      <div class="card__body">
+        <div class="stat">
+          <span class="stat__num" id="jobCount">—</span>
+          <span class="stat__unit">个岗位</span>
+        </div>
+        <div class="row-actions">
+          <button class="btn btn--ghost" type="button" data-action="export">
+            <svg class="i" aria-hidden="true"><use href="#i-download"></use></svg>导出 JSON
+          </button>
+          <button class="btn btn--ghost" type="button" data-action="import">
+            <svg class="i" aria-hidden="true"><use href="#i-upload"></use></svg>导入 JSON
+          </button>
+          <input type="file" id="importFile" accept="application/json,.json" hidden>
+        </div>
+        <p class="hint" id="libStatus" role="status" aria-live="polite">
+          导入会与现有职位合并，不会覆盖已有岗位。
+        </p>
+      </div>
+      <div class="card__foot">
+        <button class="btn btn--danger" type="button" data-action="open-clear">
+          <svg class="i" aria-hidden="true"><use href="#i-trash"></use></svg>清空当前账号职位库
+        </button>
+      </div>
+    </section>
+
+    <!-- ============ 卡片四：账号信息 ============ -->
+    <section class="card" aria-labelledby="accountTitle">
+      <div class="card__head">
+        <div class="card__headL">
+          <span class="card__ico"><svg class="i" aria-hidden="true"><use href="#i-user"></use></svg></span>
+          <h2 class="card__title" id="accountTitle">账号信息</h2>
+        </div>
+        <span class="card__hint">当前登录账号</span>
+      </div>
+      <div class="card__body">
+        <div id="accountInfo"></div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<!-- ============ 浮层：重置令牌二次确认 ============ -->
+<div class="overlay" id="rotateModal" role="dialog" aria-modal="true" aria-labelledby="rotateTitle" hidden>
+  <div class="panel">
+    <div class="panel__head">
+      <h2 class="panel__title" id="rotateTitle">重置上报令牌？</h2>
+      <button class="icon-btn" type="button" data-action="close-rotate" aria-label="关闭">
+        <svg class="i" aria-hidden="true"><use href="#i-close"></use></svg>
+      </button>
+    </div>
+    <p class="panel__desc">为 <strong id="rotateUser"></strong> 生成新的上报令牌。</p>
+    <div class="warn-box">
+      <svg class="i" aria-hidden="true"><use href="#i-alert"></use></svg>
+      <div>重置后<b>旧令牌立即失效</b>，正在用旧令牌上报的浏览器扩展会立刻失败，需要把新令牌重新填进扩展的「上报令牌」输入框。</div>
+    </div>
+    <p class="panel__desc" style="margin-bottom:0">此操作立即生效，无法撤销。</p>
+    <div class="panel__foot">
+      <button class="btn btn--ghost" type="button" data-action="close-rotate">取消</button>
+      <button class="btn btn--primary" type="button" data-action="submit-rotate" id="rotateSubmit">确认重置</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 浮层：清空职位库二次确认 ============ -->
+<div class="overlay" id="clearModal" role="dialog" aria-modal="true" aria-labelledby="clearTitle" hidden>
+  <div class="panel">
+    <div class="panel__head">
+      <h2 class="panel__title" id="clearTitle">清空职位库？</h2>
+      <button class="icon-btn" type="button" data-action="close-clear" aria-label="关闭">
+        <svg class="i" aria-hidden="true"><use href="#i-close"></use></svg>
+      </button>
+    </div>
+    <p class="danger-lead">将删除<strong id="clearOwner"></strong>的<strong>全部岗位</strong>，包括职位描述、收藏与投递记录。</p>
+    <ul class="danger-list">
+      <li>只影响当前账号，其他账号不受影响</li>
+      <li>账号与令牌、cookie 配置都会保留</li>
+      <li>清空后不可撤销，建议先导出 JSON 备份</li>
+    </ul>
+    <label class="form-row">
+      <span class="lbl">请输入 <em class="danger-word">CLEAR</em> 以确认</span>
+      <input id="clearInput" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="CLEAR">
+    </label>
+    <div class="panel__foot">
+      <button class="btn btn--ghost" type="button" data-action="close-clear">取消</button>
+      <button class="btn btn--danger" type="button" data-action="submit-clear" id="clearSubmit" disabled>确认清空</button>
+    </div>
+    <div class="reset-status" id="clearStatus" role="status" aria-live="polite" hidden></div>
+  </div>
+</div>
+
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script>
+"use strict";
+
+/* =========================================================
+   常量与状态
+   ========================================================= */
+var ROLE_LABELS = { admin: "管理员", viewer: "只读" };
+var CLEAR_WORD = "CLEAR";
+
+var state = {
+  user: null,          /* {username, displayName, role, createdAt} */
+  token: "",
+  tokenLoaded: false,
+  cookieConfigured: false,
+  jobCount: null       /* null = 还没取到 */
+};
+
+var ui = {
+  rotating: false,
+  savingCookie: false,
+  clearingCookie: false,
+  exporting: false,
+  importing: false,
+  rotateOpen: false,
+  rotateBusy: false,
+  clearOpen: false,
+  clearWord: "",
+  clearing: false,
+  clearError: "",
+  clearDone: ""
+};
+
+/* =========================================================
+   工具
+   ========================================================= */
+function $(sel) { return document.querySelector(sel); }
+
+function esc(value) {
+  if (value === null || value === undefined) return "";
+  return String(value).replace(/[&<>"']/g, function (ch) {
+    switch (ch) {
+      case "&": return "&amp;";
+      case "<": return "&lt;";
+      case ">": return "&gt;";
+      case '"': return "&quot;";
+      default: return "&#39;";
+    }
+  });
+}
+
+function pad2(n) { return n < 10 ? "0" + n : String(n); }
+
+function setText(sel, text) {
+  var el = $(sel);
+  if (el) el.textContent = text === null || text === undefined ? "" : String(text);
+}
+
+/* RFC3339（UTC）→ 本地「YYYY-MM-DD HH:mm」；解析失败时原样截断显示 */
+function fmtTime(raw) {
+  var text = String(raw || "").trim();
+  if (!text) return "—";
+  var date = new Date(text);
+  if (isNaN(date.getTime())) return text.slice(0, 19).replace("T", " ");
+  return date.getFullYear() + "-" + pad2(date.getMonth() + 1) + "-" + pad2(date.getDate())
+    + " " + pad2(date.getHours()) + ":" + pad2(date.getMinutes());
+}
+
+function stamp() {
+  var d = new Date();
+  return d.getFullYear() + pad2(d.getMonth() + 1) + pad2(d.getDate())
+    + "-" + pad2(d.getHours()) + pad2(d.getMinutes());
+}
+
+function showToast(message, kind) {
+  var el = $("#toast");
+  if (!el) return;
+  el.textContent = message;
+  el.className = "is-on" + (kind === "error" ? " is-error" : (kind === "ok" ? " is-success" : ""));
+  window.clearTimeout(showToast._timer);
+  showToast._timer = window.setTimeout(function () { el.className = ""; }, 3000);
+}
+
+/* =========================================================
+   数据层：HTTP
+   ========================================================= */
+/* 401 统一回登录页（工作台 / 即登录入口） */
+function redirectToLogin() {
+  if (redirectToLogin._done) return;
+  redirectToLogin._done = true;
+  window.location.replace("/");
+}
+
+async function api(path, options) {
+  var opts = options || {};
+  var init = {
+    method: opts.method || "GET",
+    credentials: "same-origin",
+    headers: { "Accept": "application/json" }
+  };
+  if (opts.body !== undefined) {
+    init.headers["Content-Type"] = "application/json";
+    init.body = JSON.stringify(opts.body);
+  }
+  var res = await fetch(path, init);
+  if (res.status === 401) {
+    redirectToLogin();
+    return { status: 401, ok: false, unauthorized: true, data: null };
+  }
+  var data = null;
+  try { data = await res.json(); } catch (err) { data = null; }
+  return { status: res.status, ok: res.ok, unauthorized: false, data: data };
+}
+
+/* 错误优先展示服务端 message */
+function errMsg(out, fallback) {
+  if (out && out.data && typeof out.data.message === "string" && out.data.message) return out.data.message;
+  return fallback;
+}
+
+async function loadSession() {
+  var out;
+  try {
+    out = await api("/api/auth/me");
+  } catch (err) {
+    setText("#loading", "加载失败，请刷新页面重试");
+    return false;
+  }
+  if (out.unauthorized) return false;
+  if (!out.ok || !out.data || out.data.authenticated !== true) {
+    redirectToLogin();
+    return false;
+  }
+  var u = out.data.user || {};
+  state.user = {
+    username: String(u.username || ""),
+    displayName: String(u.displayName || ""),
+    role: u.role === "admin" ? "admin" : "viewer",
+    createdAt: String(u.createdAt || "")
+  };
+  return true;
+}
+
+async function loadCredentials() {
+  var out;
+  try {
+    out = await api("/api/me/credentials");
+  } catch (err) {
+    showToast("加载令牌失败，请刷新重试", "error");
+    return;
+  }
+  if (out.unauthorized) return;
+  if (!out.ok || !out.data || out.data.ok !== true) {
+    showToast(errMsg(out, "加载令牌失败，请刷新重试"), "error");
+    return;
+  }
+  state.token = typeof out.data.token === "string" ? out.data.token : "";
+  state.tokenLoaded = true;
+  state.cookieConfigured = out.data.cookieConfigured === true;
+  renderToken();
+  renderCookie();
+}
+
+async function loadJobCount() {
+  var out;
+  try {
+    out = await api("/api/jobs");
+  } catch (err) {
+    state.jobCount = null;
+    renderLibrary();
+    return;
+  }
+  if (out.unauthorized) return;
+  if (!out.ok || !out.data) {
+    state.jobCount = null;
+    renderLibrary();
+    return;
+  }
+  var data = out.data;
+  if (data.meta && typeof data.meta.count === "number" && isFinite(data.meta.count)) {
+    state.jobCount = data.meta.count;
+  } else if (Array.isArray(data.jobs)) {
+    state.jobCount = data.jobs.length;
+  } else {
+    state.jobCount = null;
+  }
+  renderLibrary();
+}
+
+/* =========================================================
+   渲染层
+   ========================================================= */
+function renderHeader() {
+  var u = state.user || {};
+  var label = u.displayName ? u.displayName + " · " + u.username : (u.username || "");
+  setText("#topUser", label);
+  setText("#tokenUser", u.username || "");
+  setText("#rotateUser", u.username || "");
+  setText("#clearOwner", u.username || "");
+}
+
+function renderToken() {
+  var el = $("#tokenValue");
+  if (el) {
+    /* 令牌只用 textContent 写入，绝不拼 HTML */
+    el.textContent = state.tokenLoaded
+      ? (state.token || "（空）")
+      : "正在读取…";
+  }
+}
+
+function renderCookie() {
+  var pill = $("#cookiePill");
+  if (pill) {
+    pill.textContent = state.cookieConfigured ? "已配置" : "未配置";
+    pill.className = "pill" + (state.cookieConfigured ? " is-on" : "");
+  }
+  var save = document.querySelector('[data-action="save-cookie"]');
+  if (save) {
+    save.disabled = !!ui.savingCookie;
+    save.textContent = ui.savingCookie ? "保存中…" : "保存";
+  }
+  var clear = document.querySelector('[data-action="clear-cookie"]');
+  if (clear) {
+    clear.disabled = !!ui.clearingCookie || !state.cookieConfigured;
+    clear.textContent = ui.clearingCookie ? "清除中…" : "清除";
+  }
+  var input = $("#cookieInput");
+  if (input) input.disabled = !!ui.savingCookie || !!ui.clearingCookie;
+}
+
+function renderLibrary() {
+  setText("#jobCount", state.jobCount === null ? "—" : String(state.jobCount));
+  var exp = document.querySelector('[data-action="export"]');
+  if (exp) {
+    exp.disabled = !!ui.exporting;
+    exp.textContent = "";
+    exp.innerHTML = '<svg class="i" aria-hidden="true"><use href="#i-download"></use></svg>'
+      + (ui.exporting ? "导出中…" : "导出 JSON");
+  }
+  var imp = document.querySelector('[data-action="import"]');
+  if (imp) {
+    imp.disabled = !!ui.importing;
+    imp.textContent = "";
+    imp.innerHTML = '<svg class="i" aria-hidden="true"><use href="#i-upload"></use></svg>'
+      + (ui.importing ? "导入中…" : "导入 JSON");
+  }
+}
+
+function renderAccount() {
+  var box = $("#accountInfo");
+  if (!box) return;
+  var u = state.user || {};
+  var rows = [
+    ["用户名", u.username || "—"],
+    ["显示名", u.displayName || "（未设置）"],
+    ["角色", ROLE_LABELS[u.role] || ROLE_LABELS.viewer],
+    ["创建时间", fmtTime(u.createdAt)]
+  ];
+  box.innerHTML = rows.map(function (row) {
+    return '<div class="kv"><span class="kv__k">' + esc(row[0]) + '</span>'
+      + '<span class="kv__v">' + esc(row[1]) + "</span></div>";
+  }).join("");
+}
+
+function renderRotateModal() {
+  var modal = $("#rotateModal");
+  if (modal) modal.hidden = !ui.rotateOpen;
+  var btn = $("#rotateSubmit");
+  if (btn) {
+    btn.disabled = !!ui.rotateBusy;
+    btn.textContent = ui.rotateBusy ? "重置中…" : "确认重置";
+  }
+  var close = document.querySelector('[data-action="close-rotate"]');
+  if (close) close.disabled = !!ui.rotateBusy;
+}
+
+function renderClearModal() {
+  var modal = $("#clearModal");
+  if (modal) modal.hidden = !ui.clearOpen;
+  var btn = $("#clearSubmit");
+  if (btn) {
+    var wordOk = String(ui.clearWord || "").trim().toUpperCase() === CLEAR_WORD;
+    btn.disabled = !!ui.clearing || !wordOk;
+    btn.textContent = ui.clearing ? "清空中…" : "确认清空";
+  }
+  var input = $("#clearInput");
+  if (input) input.disabled = !!ui.clearing;
+  var status = $("#clearStatus");
+  if (status) {
+    var msg = ui.clearError || ui.clearDone;
+    status.textContent = msg || "";
+    status.hidden = !msg;
+    status.classList.toggle("is-ok", !!ui.clearDone && !ui.clearError);
+  }
+}
+
+function refreshAll() {
+  renderHeader();
+  renderToken();
+  renderCookie();
+  renderLibrary();
+  renderAccount();
+  renderRotateModal();
+  renderClearModal();
+}
+
+/* =========================================================
+   交互层：复制 / 重置令牌
+   ========================================================= */
+function noteTokenCopy(message) {
+  var note = $("#tokenCopyNote");
+  if (!note) return;
+  note.textContent = message || "";
+  note.hidden = !message;
+}
+
+function selectTokenText() {
+  var el = $("#tokenValue");
+  if (!el) return;
+  try {
+    var range = document.createRange();
+    range.selectNodeContents(el);
+    var sel = window.getSelection();
+    if (sel) { sel.removeAllRanges(); sel.addRange(range); }
+  } catch (err) { /* 老浏览器忽略，用户仍可手动拖选 */ }
+}
+
+async function copyToken() {
+  var value = state.token;
+  if (!value) {
+    showToast("令牌还没加载出来，请稍后重试", "error");
+    return;
+  }
+  var ok = false;
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(value);
+      ok = true;
+    }
+  } catch (err) { ok = false; }
+  if (!ok) {
+    try {
+      var area = document.createElement("textarea");
+      area.value = value;
+      area.setAttribute("readonly", "");
+      area.style.position = "fixed";
+      area.style.top = "-1000px";
+      document.body.appendChild(area);
+      area.select();
+      ok = document.execCommand("copy");
+      document.body.removeChild(area);
+    } catch (err) { ok = false; }
+  }
+  if (ok) {
+    noteTokenCopy("");
+    showToast("令牌已复制", "ok");
+    return;
+  }
+  /* 降级：选中令牌并给出可见提示，让用户手动复制 */
+  selectTokenText();
+  noteTokenCopy("自动复制不可用：令牌已选中，请按 Ctrl/Cmd + C 手动复制。");
+  showToast("复制失败，请手动复制（已选中令牌）", "error");
+}
+
+function openRotate() {
+  ui.rotateOpen = true;
+  ui.rotateBusy = false;
+  refreshAll();
+}
+
+function closeRotate() {
+  if (ui.rotateBusy) return;
+  ui.rotateOpen = false;
+  refreshAll();
+}
+
+async function submitRotate() {
+  if (ui.rotateBusy) return;
+  ui.rotateBusy = true;
+  renderRotateModal();
+  try {
+    var out = await api("/api/me/credentials/rotate", { method: "POST", body: {} });
+    if (out.unauthorized) return;
+    if (!out.ok || !out.data || out.data.ok !== true) {
+      showToast(errMsg(out, "重置令牌失败，请重试"), "error");
+      return;
+    }
+    state.token = typeof out.data.token === "string" ? out.data.token : "";
+    state.tokenLoaded = true;
+    ui.rotateOpen = false;
+    noteTokenCopy("");
+    renderToken();
+    showToast("令牌已重置，请到扩展里填写新令牌", "ok");
+  } catch (err) {
+    showToast("网络异常，重置令牌失败", "error");
+  } finally {
+    ui.rotateBusy = false;
+    refreshAll();
+  }
+}
+
+/* =========================================================
+   交互层：Cookie
+   ========================================================= */
+async function saveCookie() {
+  if (ui.savingCookie) return;
+  var input = $("#cookieInput");
+  if (!input) return;
+  var value = String(input.value || "").trim();
+  if (!value) {
+    showToast("请先粘贴 cookie 再保存", "error");
+    input.focus();
+    return;
+  }
+  ui.savingCookie = true;
+  renderCookie();
+  try {
+    var out = await api("/api/me/cookie", { method: "PUT", body: { cookie: value } });
+    if (out.unauthorized) return;
+    if (!out.ok || !out.data || out.data.ok !== true) {
+      showToast(errMsg(out, "保存 cookie 失败，请检查内容"), "error");
+      return;
+    }
+    state.cookieConfigured = out.data.cookieConfigured === true;
+    /* 保存后立即清空输入框，避免明文 cookie 停留在页面上 */
+    input.value = "";
+    showToast("cookie 已保存", "ok");
+  } catch (err) {
+    showToast("网络异常，保存失败", "error");
+  } finally {
+    ui.savingCookie = false;
+    renderCookie();
+  }
+}
+
+async function clearCookie() {
+  if (ui.clearingCookie || !state.cookieConfigured) return;
+  ui.clearingCookie = true;
+  renderCookie();
+  try {
+    var out = await api("/api/me/cookie", { method: "DELETE" });
+    if (out.unauthorized) return;
+    if (!out.ok || !out.data || out.data.ok !== true) {
+      showToast(errMsg(out, "清除 cookie 失败，请重试"), "error");
+      return;
+    }
+    state.cookieConfigured = out.data.cookieConfigured === true;
+    var input = $("#cookieInput");
+    if (input) input.value = "";
+    showToast("cookie 已清除", "ok");
+  } catch (err) {
+    showToast("网络异常，清除失败", "error");
+  } finally {
+    ui.clearingCookie = false;
+    renderCookie();
+  }
+}
+
+/* =========================================================
+   交互层：职位库导出 / 导入 / 清空
+   ========================================================= */
+function setLibraryStatus(message) {
+  var el = $("#libStatus");
+  if (!el) return;
+  el.textContent = message;
+}
+
+async function exportLibrary() {
+  if (ui.exporting) return;
+  ui.exporting = true;
+  renderLibrary();
+  try {
+    var res = await fetch("/api/me/library/export", {
+      credentials: "same-origin",
+      headers: { "Accept": "application/json" }
+    });
+    if (res.status === 401) {
+      redirectToLogin();
+      return;
+    }
+    if (!res.ok) {
+      var msg = "导出失败，请重试";
+      try {
+        var data = await res.json();
+        if (data && typeof data.message === "string" && data.message) msg = data.message;
+      } catch (err) { /* 非 JSON 错误体，用默认文案 */ }
+      showToast(msg, "error");
+      return;
+    }
+    var blob = await res.blob();
+    var name = "jobs-" + ((state.user && state.user.username) || "export") + "-" + stamp() + ".json";
+    var cd = res.headers.get("Content-Disposition") || "";
+    var match = /filename\s*=\s*"?([^";]+)"?/i.exec(cd);
+    if (match && match[1]) name = match[1].trim();
+    var url = URL.createObjectURL(blob);
+    var link = document.createElement("a");
+    link.href = url;
+    link.download = name;
+    link.rel = "noopener";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.setTimeout(function () { URL.revokeObjectURL(url); }, 1500);
+    setLibraryStatus("已导出 " + (state.jobCount === null ? "全部" : state.jobCount + " 条") + "岗位，文件名：" + name);
+    showToast("已开始下载", "ok");
+  } catch (err) {
+    showToast("网络异常，导出失败", "error");
+  } finally {
+    ui.exporting = false;
+    renderLibrary();
+  }
+}
+
+function readFileText(file) {
+  if (file && typeof file.text === "function") return file.text();
+  return new Promise(function (resolve, reject) {
+    var reader = new FileReader();
+    reader.onload = function () { resolve(String(reader.result || "")); };
+    reader.onerror = function () { reject(new Error("read failed")); };
+    reader.readAsText(file);
+  });
+}
+
+function pickJobs(parsed) {
+  if (Array.isArray(parsed)) return parsed;
+  if (parsed && Array.isArray(parsed.jobs)) return parsed.jobs;
+  if (parsed && Array.isArray(parsed.items)) return parsed.items;
+  return null;
+}
+
+async function onImportFile(event) {
+  var input = event.target;
+  var file = input && input.files ? input.files[0] : null;
+  if (input) input.value = ""; /* 允许再次选择同一个文件 */
+  if (!file) return;
+  if (ui.importing) return;
+
+  ui.importing = true;
+  renderLibrary();
+  try {
+    var text = await readFileText(file);
+    var parsed;
+    try {
+      parsed = JSON.parse(text);
+    } catch (err) {
+      showToast("文件不是合法的 JSON", "error");
+      return;
+    }
+    var jobs = pickJobs(parsed);
+    if (!jobs || !jobs.length) {
+      showToast("文件里没有可导入的岗位", "error");
+      return;
+    }
+
+    var out = await api("/api/me/library/import", { method: "POST", body: { jobs: jobs } });
+    if (out.unauthorized) return;
+    if (!out.ok || !out.data || out.data.ok !== true) {
+      showToast(errMsg(out, "导入失败，请检查文件格式"), "error");
+      return;
+    }
+    var d = out.data;
+    var imported = typeof d.imported === "number" ? d.imported : jobs.length;
+    var added = typeof d.added === "number" ? d.added : 0;
+    var skipped = typeof d.skipped === "number" ? d.skipped : 0;
+    var summary = "导入 " + imported + " 条，新增 " + added + " 条";
+    if (skipped > 0) summary += "，跳过 " + skipped + " 条（缺少 id）";
+    setLibraryStatus(summary + "。");
+    showToast(summary, "ok");
+    await loadJobCount();
+  } catch (err) {
+    showToast("读取文件失败，请重试", "error");
+  } finally {
+    ui.importing = false;
+    renderLibrary();
+  }
+}
+
+function openClear() {
+  ui.clearOpen = true;
+  ui.clearWord = "";
+  ui.clearError = "";
+  ui.clearDone = "";
+  var input = $("#clearInput");
+  if (input) input.value = "";
+  refreshAll();
+  window.setTimeout(function () {
+    var el = $("#clearInput");
+    if (el) el.focus();
+  }, 30);
+}
+
+function closeClear() {
+  if (ui.clearing) return;
+  ui.clearOpen = false;
+  ui.clearWord = "";
+  refreshAll();
+}
+
+async function submitClear() {
+  if (ui.clearing) return;
+  if (String(ui.clearWord || "").trim().toUpperCase() !== CLEAR_WORD) {
+    ui.clearError = "需要输入 " + CLEAR_WORD + " 才能清空";
+    renderClearModal();
+    return;
+  }
+  ui.clearing = true;
+  ui.clearError = "";
+  ui.clearDone = "";
+  renderClearModal();
+  try {
+    var out = await api("/api/me/library/clear", {
+      method: "POST",
+      body: { confirm: CLEAR_WORD }
+    });
+    if (out.unauthorized) return;
+    if (!out.ok || !out.data || out.data.ok !== true) {
+      ui.clearError = errMsg(out, "清空失败，请重试");
+      return;
+    }
+    var cleared = typeof out.data.cleared === "number" ? out.data.cleared : 0;
+    ui.clearDone = "已清除 " + cleared + " 条岗位。";
+    state.jobCount = 0;
+    setLibraryStatus("职位库已清空（" + cleared + " 条）。");
+    showToast("已清空 " + cleared + " 条岗位", "ok");
+    await loadJobCount();
+  } catch (err) {
+    ui.clearError = "网络异常，清空失败，请重试";
+  } finally {
+    ui.clearing = false;
+    refreshAll();
+  }
+}
+
+/* =========================================================
+   交互层：退出登录
+   ========================================================= */
+async function doLogout() {
+  try {
+    await api("/api/auth/logout", { method: "POST", body: {} });
+  } catch (err) {
+    /* 网络失败也允许本地退出 */
+  }
+  window.location.replace("/");
+}
+
+/* =========================================================
+   事件绑定
+   ========================================================= */
+function bindEvents() {
+  var app = $("#app");
+  if (app) {
+    app.addEventListener("click", function (e) {
+      var btn = e.target.closest("[data-action]");
+      if (!btn || btn.disabled) return;
+      var action = btn.dataset.action;
+      if (action === "logout") doLogout();
+      else if (action === "copy-token") copyToken();
+      else if (action === "open-rotate") openRotate();
+      else if (action === "save-cookie") saveCookie();
+      else if (action === "clear-cookie") clearCookie();
+      else if (action === "export") exportLibrary();
+      else if (action === "import") {
+        var picker = $("#importFile");
+        if (picker) picker.click();
+      } else if (action === "open-clear") openClear();
+    });
+  }
+
+  var importFile = $("#importFile");
+  if (importFile) importFile.addEventListener("change", onImportFile);
+
+  var rotateModal = $("#rotateModal");
+  if (rotateModal) {
+    rotateModal.addEventListener("click", function (e) {
+      var btn = e.target.closest("[data-action]");
+      if (btn) {
+        if (btn.dataset.action === "close-rotate") { closeRotate(); return; }
+        if (btn.dataset.action === "submit-rotate") { submitRotate(); return; }
+      }
+      if (e.target === rotateModal) closeRotate();
+    });
+  }
+
+  var clearModal = $("#clearModal");
+  if (clearModal) {
+    clearModal.addEventListener("click", function (e) {
+      var btn = e.target.closest("[data-action]");
+      if (btn) {
+        if (btn.dataset.action === "close-clear") { closeClear(); return; }
+        if (btn.dataset.action === "submit-clear") { submitClear(); return; }
+      }
+      if (e.target === clearModal) closeClear();
+    });
+  }
+
+  var clearInput = $("#clearInput");
+  if (clearInput) {
+    clearInput.addEventListener("input", function () {
+      ui.clearWord = String(clearInput.value || "");
+      ui.clearError = "";
+      renderClearModal();
+    });
+    clearInput.addEventListener("keydown", function (e) {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        submitClear();
+      }
+    });
+  }
+
+  document.addEventListener("keydown", function (e) {
+    if (e.key !== "Escape") return;
+    if (ui.clearOpen) { closeClear(); return; }
+    if (ui.rotateOpen) closeRotate();
+  });
+}
+
+/* =========================================================
+   启动
+   ========================================================= */
+async function boot() {
+  bindEvents();
+  var ok = false;
+  try {
+    ok = await loadSession();
+  } catch (err) {
+    setText("#loading", "加载失败，请刷新页面重试");
+    return;
+  }
+  if (!ok) return;
+
+  var app = $("#app");
+  var loading = $("#loading");
+  if (app) app.hidden = false;
+  if (loading) loading.hidden = true;
+
+  refreshAll();
+  await Promise.all([loadCredentials(), loadJobCount()]);
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", boot);
+} else {
+  boot();
+}
+</script>
+</body>
+</html>

@@ -27,6 +27,8 @@ import (
 
 	"jobworkspace/internal/auth"
 	"jobworkspace/internal/config"
+	"jobworkspace/internal/creds"
+	"jobworkspace/internal/library"
 	"jobworkspace/internal/model"
 	"jobworkspace/internal/store"
 	"jobworkspace/internal/userdata"
@@ -48,6 +50,9 @@ var indexHTML []byte
 
 //go:embed admin.html
 var adminHTML []byte
+
+//go:embed settings.html
+var settingsHTML []byte
 
 // collectMu 保证同一时刻只有一个采集子进程在运行。
 //
@@ -73,9 +78,13 @@ type Server struct {
 	// userState 存放每个账号的收藏 / 投递状态 / 备注，路径为 <data>/userstate。
 	userState *userdata.Store
 
-	// ingestToken 是浏览器扩展上报用的独立令牌（<data>/ingest.token）。
-	// 与登录会话无关：扩展不在本站域下，拿不到 Cookie。
-	ingestToken string
+	// lib 存放每个账号独立的职位库（<data>/libraries/<username>.json）。
+	// 不存在"全局职位库"：所有读写都必须带 username。
+	lib *library.Store
+
+	// creds 存放每个账号的上报令牌与采集 cookie（<data>/credentials/<username>.json）。
+	// 令牌用于扩展上报反查账号，cookie 只给该账号自己的采集使用。
+	creds *creds.Store
 }
 
 // SetCookieFile 设置采集子进程使用的 cookie 文件路径。
@@ -114,18 +123,17 @@ func New(cfg *config.Config, st *store.Store, log *slog.Logger) *Server {
 		// 每个账号的收藏 / 投递状态 / 备注，落在 <data>/userstate/<username>.json。
 		s.userState = userdata.NewStore(filepath.Join(st.Dir(), "userstate"))
 
-		// 扩展上报令牌：首次启动自动生成，之后复用；只写文件不写日志。
-		if tok, err := loadOrCreateIngestToken(st.Dir()); err != nil {
-			log.Error("初始化上报令牌失败，/api/ingest 将不可用", "err", err)
-		} else {
-			s.ingestToken = tok
-			log.Info("扩展上报接口已就绪", "path", ingestTokenPath(st.Dir()))
-		}
+		// 分账号职位库与凭据。
+		s.lib = library.New(filepath.Join(st.Dir(), "libraries"))
+		s.creds = creds.New(filepath.Join(st.Dir(), "credentials"))
+
+		s.migrateLegacy(log)
 	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /", s.handleIndex)
 	mux.HandleFunc("GET /admin", s.handleAdminPage)
+	mux.HandleFunc("GET /settings", s.handleSettingsPage)
 	// 健康检查与平台清单是静态信息，保持公开：前者供监控探活，
 	// 后者是内置配置（不含任何用户数据），登录前就要用来渲染采集面板。
 	mux.HandleFunc("GET /api/health", s.handleHealth)
@@ -142,6 +150,16 @@ func New(cfg *config.Config, st *store.Store, log *slog.Logger) *Server {
 	// 当前登录用户自己的收藏 / 投递状态 / 备注，按账号隔离。
 	mux.HandleFunc("GET /api/me/state", s.requireAuth(s.handleGetMyState))
 	mux.HandleFunc("PUT /api/me/state", s.requireAuth(s.handlePutMyState))
+
+	// 账号级设置：令牌、cookie、导入导出、清空自己的职位库。
+	// 这些接口全部基于会话鉴权，作用域固定为"当前账号"，不接受用户名参数。
+	mux.HandleFunc("GET /api/me/credentials", s.requireAuth(s.handleMyCredentials))
+	mux.HandleFunc("POST /api/me/credentials/rotate", s.requireAuth(s.handleRotateMyToken))
+	mux.HandleFunc("PUT /api/me/cookie", s.requireAuth(s.handlePutMyCookie))
+	mux.HandleFunc("DELETE /api/me/cookie", s.requireAuth(s.handleDeleteMyCookie))
+	mux.HandleFunc("GET /api/me/library/export", s.requireAuth(s.handleExportMyLibrary))
+	mux.HandleFunc("POST /api/me/library/import", s.requireAuth(s.handleImportMyLibrary))
+	mux.HandleFunc("POST /api/me/library/clear", s.requireAuth(s.handleClearMyLibrary))
 
 	// 认证
 	mux.HandleFunc("POST /api/auth/login", s.handleLogin)
@@ -174,6 +192,20 @@ func (s *Server) handleAdminPage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(adminHTML)
+}
+
+// handleSettingsPage 返回内嵌的账号设置单页。
+//
+// 与后台页同理：页面壳子公开，数据由 /api/me/* 按会话鉴权。
+func (s *Server) handleSettingsPage(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != "/settings" {
+		writeError(w, http.StatusNotFound, "NOT_FOUND", "页面不存在")
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(settingsHTML)
 }
 
 // Handler 返回已挂好路由与日志中间件的 http.Handler。
@@ -227,9 +259,15 @@ type platformBrief struct {
 
 // handleHealth 汇报服务存活状态、岗位总数、数据来源与平台清单。
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
-	jobs, source, err := s.loadJobs()
-	if err != nil {
-		s.log.Warn("健康检查读取岗位失败", "err", err)
+	// 未登录时不暴露任何账号的岗位数量。
+	jobs := []model.Job{}
+	source := "empty"
+	if sess, ok := s.currentSession(r); ok {
+		var err error
+		jobs, source, err = s.loadJobsFor(sess.Username)
+		if err != nil {
+			s.log.Warn("健康检查读取职位库失败", "err", err)
+		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"ok":        true,
@@ -256,7 +294,13 @@ type jobsMeta struct {
 //
 // 前端仍会自行做完整筛选与排序，这里的过滤只是减少首次传输量。
 func (s *Server) handleJobs(w http.ResponseWriter, r *http.Request) {
-	jobs, source, err := s.loadJobs()
+	sess, ok := s.currentSession(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "UNAUTHORIZED", "请先登录")
+		return
+	}
+
+	jobs, source, err := s.loadJobsFor(sess.Username)
 	if err != nil {
 		s.log.Warn("读取岗位失败", "err", err)
 		writeError(w, http.StatusInternalServerError, "STORE_READ_FAILED", "读取岗位数据失败")
@@ -277,12 +321,8 @@ func (s *Server) handleJobs(w http.ResponseWriter, r *http.Request) {
 		out = append(out, j)
 	}
 
+	// 采集报告已不再全局保存：回传它会把上一个账号的采集参数暴露出去。
 	report := model.Report{}
-	if s.st != nil {
-		if rp, ok := s.st.LoadReport(); ok {
-			report = rp
-		}
-	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"ok": true,
@@ -345,7 +385,13 @@ func (s *Server) handleCollect(w http.ResponseWriter, r *http.Request) {
 	}
 	defer collectMu.Unlock()
 
-	before, _, _ := s.loadJobs()
+	sess, ok := s.currentSession(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "UNAUTHORIZED", "请先登录")
+		return
+	}
+	username := sess.Username
+	before, _, _ := s.loadJobsFor(username)
 
 	executable, err := os.Executable()
 	if err != nil {
@@ -354,19 +400,37 @@ func (s *Server) handleCollect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 子进程写到临时目录，跑完再并入当前账号的职位库：
+	// 既保证不同账号互不污染，也让 CLI 依然保持"单文件输出"的简单语义。
+	staging, err := os.MkdirTemp("", "jw-collect-*")
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "COLLECT_FAILED", "无法创建临时目录")
+		return
+	}
+	defer os.RemoveAll(staging)
+
+	outPath := filepath.Join(staging, store.JobsFile)
+
 	args := []string{
 		"collect",
 		"--query=" + req.Query,
 		"--city=" + req.City,
 		"--pages=" + strconv.Itoa(req.Pages),
+		"--out=" + outPath,
 		"--json",
 		"--quiet",
 	}
 	if req.AllowDisallowed {
 		args = append(args, "--allow-disallowed")
 	}
-	if s.cookieFile != "" {
-		args = append(args, "--cookie-file="+s.cookieFile)
+
+	// cookie 取当前账号自己的那份，写到临时文件后交给子进程，
+	// 避免凭据出现在命令行参数（ps 可见）里。
+	if cookie := s.userCookie(username); cookie != "" {
+		cookiePath := filepath.Join(staging, "cookie")
+		if err := os.WriteFile(cookiePath, []byte(cookie), 0o600); err == nil {
+			args = append(args, "--cookie-file="+cookiePath)
+		}
 	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), collectTimeout)
@@ -425,26 +489,37 @@ func (s *Server) handleCollect(w http.ResponseWriter, r *http.Request) {
 	}
 
 	parsed, hasJSON := parseCollectOutput(stdout.String())
-	after, source, loadErr := s.loadJobs()
-	if loadErr != nil {
-		s.log.Warn("采集后读取岗位失败", "err", loadErr)
+
+	// 子进程写的是临时文件，这里把它并进当前账号的库。
+	collected, err := readCollectedJobs(outPath)
+	if err != nil {
+		s.log.Error("采集结果读取失败", "err", err, "user", username)
+		writeError(w, http.StatusInternalServerError, "COLLECT_FAILED", "采集已执行但结果读取失败")
+		return
 	}
 
-	added := len(after) - len(before)
-	if added < 0 {
-		added = 0
+	added := 0
+	if len(collected) > 0 {
+		added, _, err = s.lib.Merge(username, collected)
+		if err != nil {
+			s.log.Error("采集结果入库失败", "err", err, "user", username)
+			writeError(w, http.StatusInternalServerError, "COLLECT_FAILED", "采集已执行但写入数据库失败")
+			return
+		}
 	}
+	after, source, loadErr := s.loadJobsFor(username)
+	if loadErr != nil {
+		s.log.Warn("采集后读取职位库失败", "err", loadErr)
+	}
+	// 兜底：子进程自己报的新增数可能更大（它按自己的库统计），取大值不影响正确性。
 	if hasJSON && parsed.Added != nil && *parsed.Added > added {
 		added = *parsed.Added
 	}
+	_ = before
 
 	report := model.Report{}
 	if hasJSON && parsed.Report != nil {
 		report = *parsed.Report
-	} else if s.st != nil {
-		if rp, ok := s.st.LoadReport(); ok {
-			report = rp
-		}
 	}
 	if !hasJSON {
 		s.log.Warn("采集子进程未输出可解析的 JSON，已回退到存储统计", "stdoutHead", tailRunes(stdout.String(), 400))
@@ -499,18 +574,23 @@ func parseCollectOutput(out string) (collectCLIOut, bool) {
 	return res, false
 }
 
-// loadJobs 读取岗位列表；存储不可用时返回空列表而不是错误中断。
-func (s *Server) loadJobs() ([]model.Job, string, error) {
-	if s.st == nil {
+// loadJobsFor 读取指定账号的职位库；存储不可用时返回空列表而不是错误中断。
+//
+// 注意：这里必须带 username。早期版本读的是全局 jobs.json，
+// 一旦改成可选参数就会给串号留下口子，所以签名上强制要求。
+func (s *Server) loadJobsFor(username string) ([]model.Job, string, error) {
+	if s.lib == nil {
 		return []model.Job{}, "empty", nil
 	}
-	jobs, source, err := s.st.LoadJobs()
+	jobs, updatedAt, err := s.lib.Load(username)
 	if err != nil {
-		return []model.Job{}, "empty", fmt.Errorf("读取岗位列表失败: %w", err)
+		return []model.Job{}, "empty", fmt.Errorf("读取职位库失败: %w", err)
 	}
-	if jobs == nil {
-		jobs = []model.Job{}
+	source := "empty"
+	if len(jobs) > 0 {
+		source = "collected"
 	}
+	_ = updatedAt
 	return jobs, source, nil
 }
 
@@ -562,15 +642,7 @@ func (s *Server) updatedAt(jobs []model.Job) string {
 			latest, latestTime = j.CollectedAt, t
 		}
 	}
-	if latest != "" {
-		return latest
-	}
-	if s.st != nil {
-		if rp, ok := s.st.LoadReport(); ok {
-			return rp.FinishedAt
-		}
-	}
-	return ""
+	return latest
 }
 
 // jobMatchKeyword 判断岗位是否命中关键词（职位名/公司/平台/技能）。

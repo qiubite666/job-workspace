@@ -1,13 +1,8 @@
 package web
 
 import (
-	"crypto/rand"
-	"crypto/subtle"
-	"encoding/hex"
 	"encoding/json"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strings"
 
 	"jobworkspace/internal/config"
@@ -56,7 +51,8 @@ func (s *Server) handleIngest(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusServiceUnavailable, "STORE_UNAVAILABLE", "数据存储不可用")
 		return
 	}
-	if !s.ingestTokenOK(r) {
+	username, ok := s.resolveIngestUser(r)
+	if !ok {
 		writeError(w, http.StatusUnauthorized, "UNAUTHORIZED", "上报令牌无效")
 		return
 	}
@@ -100,7 +96,7 @@ func (s *Server) handleIngest(w http.ResponseWriter, r *http.Request) {
 		kind = "list"
 	}
 	if kind == "detail" {
-		s.ingestDetail(w, req, pcfg, spec, ctx, root, platform)
+		s.ingestDetail(w, req, pcfg, spec, ctx, root, platform, username)
 		return
 	}
 
@@ -127,7 +123,7 @@ func (s *Server) handleIngest(w http.ResponseWriter, r *http.Request) {
 		jobs = append(jobs, job)
 	}
 
-	added, total, err := s.st.MergeAndSave(jobs)
+	added, total, err := s.lib.Merge(username, jobs)
 	if err != nil {
 		s.log.Error("ingest 落库失败", "err", err, "platform", platform)
 		writeError(w, http.StatusInternalServerError, "SAVE_FAILED", "写入岗位数据失败")
@@ -155,25 +151,6 @@ func (s *Server) handleIngest(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleIngestPreflight(w http.ResponseWriter, r *http.Request) {
 	s.applyIngestCORS(w, r)
 	w.WriteHeader(http.StatusNoContent)
-}
-
-// ingestTokenOK 恒定时间比较上报令牌。
-func (s *Server) ingestTokenOK(r *http.Request) bool {
-	want := strings.TrimSpace(s.ingestToken)
-	if want == "" {
-		return false
-	}
-	got := strings.TrimSpace(r.Header.Get("X-Ingest-Token"))
-	if got == "" {
-		// 兼容 Authorization: Bearer <token>
-		if auth := strings.TrimSpace(r.Header.Get("Authorization")); strings.HasPrefix(auth, "Bearer ") {
-			got = strings.TrimSpace(strings.TrimPrefix(auth, "Bearer "))
-		}
-	}
-	if got == "" {
-		return false
-	}
-	return subtle.ConstantTimeCompare([]byte(got), []byte(want)) == 1
 }
 
 // applyIngestCORS 只为上报接口放行跨域来源。
@@ -258,37 +235,6 @@ func toMapSlice(v any) []map[string]any {
 	return out
 }
 
-// ingestTokenPath 返回令牌文件路径。
-func ingestTokenPath(dataDir string) string {
-	return filepath.Join(dataDir, "ingest.token")
-}
-
-// loadOrCreateIngestToken 读取上报令牌，不存在则生成。
-//
-// 令牌只写文件、不出现在日志与接口响应里；运维需要时自行 cat 该文件。
-func loadOrCreateIngestToken(dataDir string) (string, error) {
-	path := ingestTokenPath(dataDir)
-	if b, err := os.ReadFile(path); err == nil {
-		if tok := strings.TrimSpace(string(b)); tok != "" {
-			return tok, nil
-		}
-	}
-
-	buf := make([]byte, 24)
-	if _, err := rand.Read(buf); err != nil {
-		return "", err
-	}
-	tok := hex.EncodeToString(buf)
-
-	if err := os.MkdirAll(dataDir, 0o700); err != nil {
-		return "", err
-	}
-	if err := os.WriteFile(path, []byte(tok+"\n"), 0o600); err != nil {
-		return "", err
-	}
-	return tok, nil
-}
-
 // ingestDetail 处理详情包：只补全 JD、招聘者、活跃度等详情字段。
 //
 // 详情接口的响应结构是 {zpData:{jobInfo:{...}}}，与列表的 jobList 不同，
@@ -302,6 +248,7 @@ func (s *Server) ingestDetail(
 	ctx mapping.Context,
 	root map[string]any,
 	platform string,
+	username string,
 ) {
 	info, ok := mapping.ReadPath(root, "zpData.jobInfo")
 	if !ok {
@@ -329,7 +276,7 @@ func (s *Server) ingestDetail(
 		return
 	}
 
-	updated, added, total, err := s.st.UpsertDetails([]model.Job{job})
+	updated, added, total, err := s.lib.UpsertDetails(username, []model.Job{job})
 	if err != nil {
 		s.log.Error("ingest 详情落库失败", "err", err, "platform", platform, "id", job.ID)
 		writeError(w, http.StatusInternalServerError, "SAVE_FAILED", "写入岗位数据失败")
@@ -365,4 +312,25 @@ func specFromPlatform(p *config.Platform) mapping.Spec {
 		ActiveOnlinePath: p.ActiveOnlinePath,
 		ActiveTimePath:   p.ActiveTimePath,
 	}
+}
+
+// resolveIngestUser 用上报令牌反查账号。
+//
+// 令牌是账号级凭据：同一个部署里每个账号一把，互不通用。
+// 这里不接受会话 Cookie —— 扩展运行在第三方域名下，本来就拿不到。
+func (s *Server) resolveIngestUser(r *http.Request) (string, bool) {
+	if s.creds == nil {
+		return "", false
+	}
+
+	got := strings.TrimSpace(r.Header.Get("X-Ingest-Token"))
+	if got == "" {
+		if authz := strings.TrimSpace(r.Header.Get("Authorization")); strings.HasPrefix(authz, "Bearer ") {
+			got = strings.TrimSpace(strings.TrimPrefix(authz, "Bearer "))
+		}
+	}
+	if got == "" {
+		return "", false
+	}
+	return s.creds.Resolve(got)
 }

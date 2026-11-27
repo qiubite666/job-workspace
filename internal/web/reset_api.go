@@ -49,15 +49,29 @@ func (s *Server) handleAdminReset(w http.ResponseWriter, r *http.Request) {
 		who = sess.Username
 	}
 
-	removedJobs, err := s.st.ClearJobs()
-	if err != nil {
-		s.log.Error("清空岗位数据失败", "err", err, "by", who)
-		writeError(w, http.StatusInternalServerError, "CLEAR_FAILED", "清空岗位数据失败，请重试")
-		return
+	// 职位库改为分账号存放，这里逐个账号清空；账号本身保留。
+	removedJobs := 0
+	if s.lib != nil && s.users != nil {
+		for _, u := range s.users.List() {
+			n, err := s.lib.Clear(u.Username)
+			if err != nil {
+				s.log.Error("清空账号职位库失败", "err", err, "user", u.Username, "by", who)
+				writeError(w, http.StatusInternalServerError, "CLEAR_FAILED", "清空职位库失败，请重试")
+				return
+			}
+			removedJobs += n
+		}
+	}
+	// 兼容：升级前遗留的全局库也一并清掉，避免它被再次迁移回某个账号。
+	if s.st != nil {
+		if n, err := s.st.ClearJobs(); err == nil {
+			removedJobs += n
+		}
 	}
 
 	removedStates := 0
 	if s.userState != nil {
+		var err error
 		removedStates, err = s.userState.ClearAll()
 		if err != nil {
 			// 岗位已清掉，这里失败属于部分成功，必须如实告诉调用方。
