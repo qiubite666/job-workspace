@@ -154,6 +154,9 @@ func New(cfg *config.Config, st *store.Store, log *slog.Logger) *Server {
 	mux.HandleFunc("POST /api/admin/users", s.requireRole(auth.RoleAdmin, s.handleAdminCreateUser))
 	mux.HandleFunc("POST /api/admin/users/{username}/password", s.requireRole(auth.RoleAdmin, s.handleAdminSetPassword))
 
+	// 清空全部业务数据：不可恢复，除权限外还要求请求体带确认口令。
+	mux.HandleFunc("POST /api/admin/reset", s.requireRole(auth.RoleAdmin, s.handleAdminReset))
+
 	s.handler = withLogging(log, mux)
 	return s
 }

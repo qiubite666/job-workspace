@@ -362,3 +362,25 @@ func mergeDetailFields(stored, detail model.Job) model.Job {
 
 	return out
 }
+
+// ClearJobs 清空全部岗位数据，并顺带删掉最近一次采集报告。
+//
+// 报告描述的是"上一批采集结果"，数据清空后留着只会让人误以为库里还有东西。
+func (s *Store) ClearJobs() (removed int, err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	jobs, _, rErr := readJobsFile(s.jobsPath())
+	if rErr != nil && !errors.Is(rErr, os.ErrNotExist) {
+		return 0, rErr
+	}
+	removed = len(jobs)
+
+	if err := s.saveJobsLocked([]model.Job{}); err != nil {
+		return 0, err
+	}
+	if err := os.Remove(s.reportPath()); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return removed, err
+	}
+	return removed, nil
+}

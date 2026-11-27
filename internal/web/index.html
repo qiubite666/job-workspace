@@ -2306,6 +2306,17 @@ async function boot() {
   bindEvents();
   refreshAll();
 
+  /* 后台在另一个标签页清空了数据，这里同步刷新，避免继续显示陈旧岗位 */
+  window.addEventListener("storage", function (e) {
+    if (e.key !== "wb_data_reset_at" || !e.newValue) return;
+    loadJobsData().then(function () {
+      refreshAll();
+      showToast("数据已被清除，页面已刷新");
+    }).catch(function () {
+      refreshAll();
+    });
+  });
+
   var out = await api("/api/auth/me", { handleUnauthorized: false });
   auth.checking = false;
 

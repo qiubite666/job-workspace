@@ -305,6 +305,20 @@ svg{display:block}
 @keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 
 /* ---------- 响应式 ---------- */
+/* ---------- 危险操作 ---------- */
+.btn--danger{background:var(--danger);border-color:transparent;color:#fff}
+.btn--danger:hover:not(:disabled){background:#b80012}
+.btn--danger:disabled{opacity:.45;cursor:not-allowed}
+.danger-lead{font-size:13px;line-height:1.75;color:var(--text);margin-bottom:10px}
+.danger-lead b{font-weight:600}
+.danger-list{margin:0 0 16px;padding-left:18px;font-size:13px;color:var(--muted);line-height:1.75}
+.danger-list li{margin:2px 0}
+.danger-word{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;background:rgba(215,0,21,.08);
+  color:var(--danger);padding:1px 6px;border-radius:5px;font-size:13px}
+.reset-status{margin-top:14px;font-size:13px;line-height:1.65;padding:10px 12px;border-radius:10px;
+  background:rgba(215,0,21,.06);color:var(--danger);overflow-wrap:anywhere}
+.reset-status.is-ok{background:rgba(29,122,76,.08);color:var(--ok)}
+
 @media (min-width:1200px){
   .wrap{max-width:1180px}
   .topbar__inner{max-width:1180px}
@@ -522,6 +536,27 @@ svg{display:block}
           <div class="empty__hint" id="usersEmptyHint">在上方表单创建第一个账号</div>
         </div>
       </section>
+      <!-- 区块三：危险操作 -->
+      <section class="card" id="dangerCard" aria-labelledby="dangerTitle">
+        <div class="card__head">
+          <h2 class="card__title" id="dangerTitle">危险操作</h2>
+          <span class="card__hint">不可恢复</span>
+        </div>
+        <div class="card__body">
+          <p class="danger-lead">
+            清除工作台的<strong>全部业务数据</strong>，用于重新开始或清理脏数据。
+            <strong>账号不会被删除</strong>，清除后你仍可正常登录。
+          </p>
+          <ul class="danger-list">
+            <li>所有岗位数据（含职位描述、收藏与投递状态）</li>
+            <li>所有账号的收藏、投递阶段与备注</li>
+            <li>最近一次采集报告</li>
+          </ul>
+          <button class="btn btn--danger" type="button" data-action="open-reset" id="openResetBtn">
+            <svg class="i" aria-hidden="true"><use href="#i-trash"></use></svg>清除所有数据
+          </button>
+        </div>
+      </section>
     </div>
   </main>
 
@@ -549,6 +584,31 @@ svg{display:block}
     </div>
   </div>
 </div>
+
+<!-- 清除所有数据：二次确认浮层 -->
+  <div class="overlay" id="resetModal" role="dialog" aria-modal="true" aria-labelledby="resetTitle" hidden>
+    <div class="panel panel--sm">
+      <div class="panel__head">
+        <h2 class="panel__title" id="resetTitle">确认清除所有数据？</h2>
+        <button class="icon-btn" type="button" data-action="close-reset" aria-label="关闭">
+          <svg class="i" aria-hidden="true"><use href="#i-close"></use></svg>
+        </button>
+      </div>
+      <p class="panel__desc">
+        将删除全部岗位、所有账号的收藏与投递记录、以及最近一次采集报告。
+        此操作<strong>不可撤销</strong>，账号会保留。
+      </p>
+      <label class="form-row">
+        <span class="lbl">请输入 <em class="danger-word">清除</em> 以确认</span>
+        <input id="resetInput" type="text" autocomplete="off" placeholder="清除" aria-describedby="resetStatus">
+      </label>
+      <div class="panel__foot">
+        <button class="btn btn--ghost" type="button" data-action="close-reset" id="resetCancel">取消</button>
+        <button class="btn btn--danger" type="button" data-action="submit-reset" id="resetSubmit" disabled>确认清除</button>
+      </div>
+      <div class="reset-status" id="resetStatus" role="status" aria-live="polite" hidden></div>
+    </div>
+  </div>
 
 <div id="toast" role="status" aria-live="polite"></div>
 
@@ -585,6 +645,13 @@ var ui = {
   /* 一次性密码：仅在服务端生成密码时填写 */
   secretTitle: "",
   secretValue: "",
+  /* 清除所有数据：确认浮层状态。resetWord 是用户输入的确认词，
+     必须与 RESET_WORD 完全一致才允许提交。 */
+  resetOpen: false,
+  resetWord: "",
+  resetBusy: false,
+  resetError: "",
+  resetDone: "",
   pwUser: null,
   pwSaving: false,
   pwError: ""
@@ -1052,12 +1119,115 @@ function renderPwModal() {
   }
 }
 
+/* =========================================================
+   清除所有数据
+   ========================================================= */
+var RESET_WORD = "清除";
+/* 跨页面广播用的 storage key：清空成功后写入，工作台监听后自行刷新 */
+var RESET_FLAG_KEY = "wb_data_reset_at";
+
+function openReset() {
+  ui.resetOpen = true;
+  ui.resetWord = "";
+  ui.resetError = "";
+  ui.resetDone = "";
+  ui.resetBusy = false;
+  refreshAll();
+  var input = $("#resetInput");
+  if (input) {
+    input.value = "";
+    window.setTimeout(function () { input.focus(); }, 30);
+  }
+}
+
+function closeReset() {
+  if (ui.resetBusy) return;
+  ui.resetOpen = false;
+  ui.resetWord = "";
+  ui.resetError = "";
+  ui.resetDone = "";
+  refreshAll();
+}
+
+async function submitReset() {
+  if (ui.resetBusy) return;
+  if (ui.resetWord !== RESET_WORD) {
+    ui.resetError = "请先输入「" + RESET_WORD + "」以确认";
+    refreshAll();
+    return;
+  }
+
+  ui.resetBusy = true;
+  ui.resetError = "";
+  ui.resetDone = "";
+  refreshAll();
+
+  var out = await api("/api/admin/reset", {
+    method: "POST",
+    body: { confirm: "CLEAR_ALL" }
+  });
+
+  ui.resetBusy = false;
+
+  if (!out.ok || !out.data || out.data.ok !== true) {
+    var msg = out.network
+      ? "网络异常，请检查连接后重试"
+      : ((out.data && (out.data.message || out.data.error)) ? (out.data.message || out.data.error) : ("HTTP " + out.status));
+    ui.resetError = "清除失败：" + msg;
+    refreshAll();
+    return;
+  }
+
+  var cleared = (out.data && out.data.cleared) || {};
+  var jobs = typeof cleared.jobs === "number" ? cleared.jobs : 0;
+  var states = typeof cleared.userStates === "number" ? cleared.userStates : 0;
+  ui.resetDone = "已清除 " + jobs + " 条岗位数据、" + states + " 份账号数据，账号已保留。";
+  ui.resetWord = "";
+
+  /* 通知其它已打开的页面（同一浏览器下 localStorage 共享） */
+  try {
+    window.localStorage.setItem(RESET_FLAG_KEY, String(Date.now()));
+  } catch (e) { /* 隐私模式下不可写，忽略 */ }
+
+  var input = $("#resetInput");
+  if (input) input.value = "";
+
+  refreshAll();
+}
+
+function renderResetModal() {
+  var modal = $("#resetModal");
+  if (!modal) return;
+  modal.hidden = !ui.resetOpen;
+  if (!ui.resetOpen) return;
+
+  var input = $("#resetInput");
+  if (input) input.disabled = !!ui.resetBusy;
+
+  var submit = $("#resetSubmit");
+  if (submit) {
+    submit.disabled = !!ui.resetBusy || ui.resetWord !== RESET_WORD;
+    submit.textContent = ui.resetBusy ? "清除中…" : "确认清除";
+  }
+  var cancel = $("#resetCancel");
+  if (cancel) cancel.disabled = !!ui.resetBusy;
+
+  var status = $("#resetStatus");
+  if (status) {
+    var text = ui.resetError || ui.resetDone;
+    status.textContent = text || "";
+    status.hidden = !text;
+    status.classList.toggle("is-ok", !!ui.resetDone && !ui.resetError);
+  }
+}
+
 /* 唯一刷新入口 */
 function refreshAll() {
   renderShell();
   renderSecret();
   renderCreateForm();
   renderUsers();
+  renderResetModal();
   renderPwModal();
 }
 
@@ -1296,6 +1466,12 @@ function bindEvents() {
         openPassword(btn.dataset.username || "");
       } else if (action === "close-pw") {
         closePassword();
+      } else if (action === "open-reset") {
+        openReset();
+      } else if (action === "close-reset") {
+        closeReset();
+      } else if (action === "submit-reset") {
+        submitReset();
       } else if (action === "close-secret") {
         ui.secretTitle = "";
         ui.secretValue = "";
@@ -1314,8 +1490,31 @@ function bindEvents() {
     });
   }
 
+  var resetModal = $("#resetModal");
+  if (resetModal) {
+    /* 弹窗在 #consoleView 之外，收不到那边的委托，这里单独接一遍 */
+    resetModal.addEventListener("click", function (e) {
+      var btn = e.target.closest("[data-action]");
+      if (btn) {
+        var action = btn.dataset.action;
+        if (action === "close-reset") { closeReset(); return; }
+        if (action === "submit-reset") { submitReset(); return; }
+      }
+      if (e.target === resetModal) closeReset();
+    });
+  }
+
+  var resetInput = $("#resetInput");
+  if (resetInput) {
+    resetInput.addEventListener("input", function () {
+      ui.resetWord = String(resetInput.value || "").trim();
+      refreshAll();
+    });
+  }
+
   document.addEventListener("keydown", function (e) {
     if (e.key !== "Escape") return;
+    if (ui.resetOpen) { closeReset(); return; }
     if (ui.pwUser) closePassword();
   });
 }

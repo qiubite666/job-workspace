@@ -365,3 +365,31 @@ func writeFileAtomic(path string, data []byte) (err error) {
 	}
 	return nil
 }
+
+// ClearAll 删除所有账号的收藏 / 投递 / 备注文件，返回删除的文件数。
+//
+// 只删本目录下的 .json，不递归、不动其他文件，避免误伤。
+func (s *Store) ClearAll() (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	entries, err := os.ReadDir(s.dir)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return 0, nil
+		}
+		return 0, err
+	}
+
+	removed := 0
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
+			continue
+		}
+		if err := os.Remove(filepath.Join(s.dir, e.Name())); err != nil {
+			return removed, err
+		}
+		removed++
+	}
+	return removed, nil
+}
