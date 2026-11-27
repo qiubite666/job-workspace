@@ -134,6 +134,8 @@ func (s *Server) handleIngest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	s.recordIngest(username, "list", platform)
+
 	s.log.Info("接收扩展上报",
 		"platform", platform, "query", req.Query, "city", req.City,
 		"received", len(items), "mapped", len(jobs), "dropped", dropped, "added", added, "total", total)
@@ -296,6 +298,8 @@ func (s *Server) ingestDetail(
 		writeError(w, http.StatusInternalServerError, "SAVE_FAILED", "写入岗位数据失败")
 		return
 	}
+
+	s.recordIngest(username, "detail", platform)
 
 	s.log.Info("接收详情上报", "platform", platform, "id", job.ID,
 		"hasDescription", strings.TrimSpace(job.Description) != "", "updated", updated, "added", added)

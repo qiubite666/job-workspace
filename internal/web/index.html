@@ -97,6 +97,9 @@ svg{display:block}
   font-size:13px;color:var(--muted);background:rgba(0,113,227,.06);
   border-radius:12px;display:flex;align-items:center;gap:8px;
 }
+/* 上报来源不一致：比普通提示更需要注意，用琥珀色而不是红色（不是错误） */
+.notice--warn{color:#8a5a00;background:rgba(255,159,10,.12)}
+.notice--warn .i{flex:none}
 .notice .i{width:15px;height:15px;color:var(--primary)}
 
 /* ---------- Hero ---------- */
@@ -672,6 +675,11 @@ svg{display:block}
   <span>服务暂时不可用，正在显示本地缓存。</span>
 </div>
 
+<div class="notice notice--warn" id="ingestNotice" hidden>
+  <svg class="i" aria-hidden="true"><use href="#i-alert"></use></svg>
+  <span id="ingestNoticeText"></span>
+</div>
+
 <main class="wrap">
   <section class="hero">
     <h1>把找工作，做成一件有条理的事。</h1>
@@ -944,6 +952,9 @@ var visibleCount = PAGE_SIZE;
 var state = defaultState();
 
 /* 纯界面状态，不持久化 */
+/* 最近一次上报来源（全局），用于发现"当前账号 ≠ 上报账号" */
+var ingestInfo = null;
+
 var ui = { keyword: "", city: "", salary: "all", exp: "all", jdFilter: "all", sort: "smart", view: "card", noteId: null, detailId: null };
 
 /* 登录态状态机：checking → anonymous | authenticated */
@@ -1311,6 +1322,7 @@ async function loadJobsData() {
     var meta = out.data.meta || {};
     source = meta.source || "collected";
     lastUpdated = meta.updatedAt || "";
+    ingestInfo = meta.lastIngest && meta.lastIngest.username ? meta.lastIngest : null;
     serverOnline = true;
     writeJobsCache(jobs);
   } else {
@@ -1932,10 +1944,37 @@ function renderCollect(result) {
 /* =========================================================
    唯一刷新入口
    ========================================================= */
+/* 只在"上报来源"和"当前账号"不一致时提示：两者一致时不该打扰用户。 */
+function renderIngestNotice() {
+  var box = $("#ingestNotice");
+  var text = $("#ingestNoticeText");
+  if (!box || !text) return;
+
+  var who = auth.user && auth.user.username;
+  var from = ingestInfo && ingestInfo.username;
+  if (!from || !who || from === who) {
+    box.hidden = true;
+    return;
+  }
+
+  var when = "";
+  if (ingestInfo.at) {
+    var d = new Date(ingestInfo.at);
+    if (!isNaN(d.getTime())) when = formatTime(ingestInfo.at);
+  }
+
+  var kind = ingestInfo.kind === "detail" ? "详情" : "列表";
+  text.textContent = "最近一次" + kind + "上报来自「" + from + "」账号"
+    + (when ? "（" + when + "）" : "")
+    + "，当前查看的是「" + who + "」的库。切账号后请同步更新扩展里的令牌。";
+  box.hidden = false;
+}
+
 function refreshAll() {
   renderShell();
   if (!auth.user) return;
   renderHeader();
+  renderIngestNotice();
   renderStats();
   renderList();
   renderPager();

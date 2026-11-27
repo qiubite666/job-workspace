@@ -288,6 +288,8 @@ type jobsMeta struct {
 	UpdatedAt string       `json:"updatedAt"`
 	Source    string       `json:"source"`
 	Report    model.Report `json:"report"`
+	// LastIngest 是全局的"最近一次上报来源"，用来发现账号与令牌不一致。
+	LastIngest LastIngest `json:"lastIngest"`
 }
 
 // handleJobs 返回岗位列表，并支持 query/city 的轻量服务端过滤。
@@ -327,10 +329,11 @@ func (s *Server) handleJobs(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"ok": true,
 		"meta": jobsMeta{
-			Count:     len(out),
-			UpdatedAt: s.updatedAt(jobs),
-			Source:    source,
-			Report:    report,
+			Count:      len(out),
+			UpdatedAt:  s.updatedAt(jobs),
+			Source:     source,
+			Report:     report,
+			LastIngest: s.lastIngest(),
 		},
 		"jobs": out,
 	})
