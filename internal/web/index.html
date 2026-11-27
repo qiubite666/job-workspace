@@ -522,6 +522,50 @@ svg{display:block}
     scroll-behavior:auto !important;
   }
 }
+
+/* ---------- 职位详情弹窗 ---------- */
+/* 卡片整块可点：键盘可聚焦，focus-visible 复用全局描边 */
+.job{cursor:pointer}
+.job:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+/* 详情面板：头部/底部固定，中间 .dl 单独滚动，弹窗高度不会随描述长度无限增长 */
+.panel--detail{
+  max-width:600px;max-height:min(88vh,880px);
+  display:flex;flex-direction:column;padding:22px 24px 0;
+}
+.dl{flex:1 1 auto;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;padding-bottom:4px}
+.dl__name{font-size:20px;font-weight:600;letter-spacing:-.01em;line-height:1.3;overflow-wrap:anywhere}
+.dl__brand{font-size:14px;color:var(--muted);margin-top:4px;overflow-wrap:anywhere;line-height:1.5}
+.dl__brand .sep,.dl__val .sep{color:#c7c7cc;margin:0 6px}
+.dl__facts{margin-top:16px;display:flex;flex-direction:column;gap:10px}
+.dl__row{display:flex;gap:12px;align-items:flex-start;min-width:0}
+.dl__label{flex:none;width:5.2em;font-size:13px;color:var(--muted);line-height:1.6}
+.dl__val{flex:1 1 auto;min-width:0;font-size:14px;line-height:1.6;overflow-wrap:anywhere}
+.dl__val--salary{color:var(--primary);font-weight:600;font-variant-numeric:tabular-nums}
+.dl__tags{display:flex;flex-wrap:wrap;gap:6px;min-width:0}
+.dl__act{
+  display:inline-flex;align-items:center;gap:5px;margin-left:8px;
+  font-size:12px;color:var(--primary);white-space:nowrap;
+}
+.dl__act::before{content:"";width:5px;height:5px;border-radius:50%;background:currentColor;flex:none}
+.dl__sec{margin-top:18px;padding-top:16px;border-top:1px solid var(--line);min-width:0}
+.dl__sec-title{font-size:12px;font-weight:500;color:var(--muted);letter-spacing:.04em;margin-bottom:8px}
+/* pre-wrap 保留正文换行；固定上限 + 内部滚动，长 JD 不会把整页顶长 */
+.dl__desc{
+  font-size:14px;line-height:1.75;white-space:pre-wrap;overflow-wrap:anywhere;
+  max-height:36vh;overflow-y:auto;-webkit-overflow-scrolling:touch;padding-right:4px;
+}
+.dl__hint{font-size:13px;color:var(--faint);line-height:1.6}
+.dl__foot{
+  flex:none;display:flex;flex-wrap:wrap;justify-content:flex-end;gap:10px;
+  margin-top:4px;padding:14px 0 18px;border-top:1px solid var(--line);
+}
+@media (max-width:600px){
+  .panel--detail{padding:18px 16px 0;max-height:90vh}
+  .dl__label{width:4.6em;font-size:12px}
+  .dl__desc{max-height:34vh}
+  .dl__foot{gap:8px}
+  .dl__foot .btn{flex:1 1 auto}
+}
 </style>
 </head>
 <body>
@@ -545,6 +589,7 @@ svg{display:block}
   <symbol id="i-logout" viewBox="0 0 24 24"><path d="M14 5H7a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h7"/><path d="M17 8.5 20.5 12 17 15.5"/><path d="M10 12h10"/></symbol>
   <symbol id="i-note" viewBox="0 0 24 24"><path d="M5 4.5h14v10l-4.5 5H5z"/><path d="M14.5 19.5v-5h5"/><path d="M8.5 9h7M8.5 12.5h4"/></symbol>
   <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3.2 19 6v6c0 4-3 6.9-7 8.8-4-1.9-7-4.8-7-8.8V6z"/><path d="m9 12 2 2 4-4"/></symbol>
+  <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.1"/><path d="M12 3.6v1.9M12 18.5v1.9M4.7 7.8l1.6.9M17.7 15.3l1.6.9M4.7 16.2l1.6-.9M17.7 8.7l1.6-.9"/></symbol>
 </svg>
 
 <!-- ==================== 启动校验 ==================== -->
@@ -605,6 +650,9 @@ svg{display:block}
       </button>
       <div class="account">
         <span class="user" id="userName"></span>
+        <a class="btn btn--quiet btn--icon" href="/settings" id="settingsLink" aria-label="设置" title="设置">
+          <svg class="i" aria-hidden="true"><use href="#i-settings"></use></svg><span class="btn__text">设置</span>
+        </a>
         <a class="btn btn--quiet btn--icon" href="/admin" id="adminLink" hidden aria-label="管理后台" title="管理后台">
           <svg class="i" aria-hidden="true"><use href="#i-shield"></use></svg><span class="btn__text">管理后台</span>
         </a>
@@ -811,6 +859,36 @@ svg{display:block}
   </div>
 </div>
 
+<!-- 职位详情：点击卡片空白处打开；只展示后端已有的字段，空字段整块不渲染 -->
+<div class="overlay" id="detailModal" role="dialog" aria-modal="true" aria-labelledby="detailTitle">
+  <div class="panel panel--detail">
+    <div class="panel__head">
+      <h2 class="panel__title" id="detailTitle">职位详情</h2>
+      <button class="icon-btn" type="button" id="detailClose" aria-label="关闭职位详情">
+        <svg class="i" aria-hidden="true"><use href="#i-close"></use></svg>
+      </button>
+    </div>
+    <div class="dl" id="detailScroll">
+      <div class="dl__head">
+        <h3 class="dl__name" id="detailName"></h3>
+        <p class="dl__brand" id="detailBrand" hidden></p>
+      </div>
+      <div id="detailFacts"></div>
+      <section class="dl__sec" id="detailDescSec">
+        <h4 class="dl__sec-title">职位描述</h4>
+        <div class="dl__desc" id="detailDesc" hidden></div>
+        <p class="dl__hint" id="detailDescHint" hidden>该职位还没有描述。在 BOSS 打开这个职位详情后会自动补全。</p>
+      </section>
+    </div>
+    <div class="dl__foot">
+      <a class="btn btn--primary" id="detailLink" href="#" target="_blank" rel="noopener noreferrer" hidden>
+        <svg class="i" aria-hidden="true"><use href="#i-external"></use></svg>查看原职位
+      </a>
+      <button class="btn btn--ghost" type="button" id="detailCloseFoot">关闭</button>
+    </div>
+  </div>
+</div>
+
 </div>
 
 <div id="toast" role="status" aria-live="polite"></div>
@@ -855,7 +933,7 @@ var visibleCount = PAGE_SIZE;
 var state = defaultState();
 
 /* 纯界面状态，不持久化 */
-var ui = { keyword: "", city: "", salary: "all", exp: "all", sort: "smart", view: "card", noteId: null };
+var ui = { keyword: "", city: "", salary: "all", exp: "all", sort: "smart", view: "card", noteId: null, detailId: null };
 
 /* 登录态状态机：checking → anonymous | authenticated */
 var auth = { user: null, checking: true, busy: false, error: "", uninitialized: false };
@@ -1076,7 +1154,7 @@ function resetSession() {
   lastUpdated = "";
   platformCache = [];
   visibleCount = PAGE_SIZE;
-  ui = { keyword: "", city: "", salary: "all", exp: "all", sort: "smart", view: "card", noteId: null };
+  ui = { keyword: "", city: "", salary: "all", exp: "all", sort: "smart", view: "card", noteId: null, detailId: null };
 
   window.clearTimeout(save.timer);
   save.timer = 0;
@@ -1092,6 +1170,8 @@ function resetSession() {
   if (collect) collect.classList.remove("is-open");
   var jd = $("#jdModal");
   if (jd) jd.classList.remove("is-open");
+  var detail = $("#detailModal");
+  if (detail) detail.classList.remove("is-open");
 }
 
 function expireSession() {
@@ -1711,7 +1791,8 @@ function cardHTML(job, index) {
     ? '<a class="link" href="' + esc(url) + '" target="_blank" rel="noopener noreferrer" data-action="open">查看原职位<svg class="i" aria-hidden="true"><use href="#i-external"></use></svg></a>'
     : '<span class="link link--disabled">暂无链接</span>';
 
-  return '<article class="job" data-id="' + esc(job.id) + '" style="animation-delay:' + delay + 'ms">'
+  /* tabindex 让卡片可键盘聚焦（回车/空格进详情），内部按钮仍是独立焦点目标 */
+  return '<article class="job" data-id="' + esc(job.id) + '" tabindex="0" aria-label="查看职位详情：' + esc(job.jobName || "") + '" style="animation-delay:' + delay + 'ms">'
     + '<div class="job__head">'
     + '<div class="job__title"><h3 class="job__name">' + esc(job.jobName) + "</h3></div>"
     + salaryHTML(job)
@@ -2100,6 +2181,148 @@ function closeJd() {
 }
 
 /* =========================================================
+   职位详情面板（点击卡片打开）
+   只操作 DOM 与 ui.detailId，不调用任何 render* 函数；
+   除职位描述用 textContent 之外，其余插值一律经 esc() 转义。
+   ========================================================= */
+/* 关闭后把焦点还给来源卡片，纯界面状态，不持久化 */
+var detailReturnFocus = null;
+
+/* 工作地址：优先 location；否则用 城市 / 行政区 / 商圈 的非空项拼接；全空返回 "" */
+function detailAddress(job) {
+  if (!job || typeof job !== "object") return "";
+  var loc = typeof job.location === "string" ? job.location.trim() : "";
+  if (loc) return loc;
+  var seen = {};
+  var parts = [];
+  [job.cityName, job.areaDistrict, job.businessDistrict].forEach(function (v) {
+    if (typeof v !== "string") return;
+    var s = v.trim();
+    if (!s || seen[s]) return;
+    seen[s] = true;
+    parts.push(s);
+  });
+  return parts.join(" · ");
+}
+
+/* valueHTML 必须是已转义的 HTML 片段；label 在此内部转义 */
+function detailRowHTML(label, valueHTML, extraCls) {
+  if (!valueHTML) return "";
+  return '<div class="dl__row"><span class="dl__label">' + esc(label) + "</span>"
+    + '<span class="dl__val' + (extraCls ? " " + extraCls : "") + '">' + valueHTML + "</span></div>";
+}
+
+function detailTagsHTML(list) {
+  var items = Array.isArray(list) ? list.filter(function (s) { return typeof s === "string" && s.trim(); }) : [];
+  if (!items.length) return "";
+  return '<div class="dl__tags">' + items.map(function (s) {
+    return '<span class="tag">' + esc(s) + "</span>";
+  }).join("") + "</div>";
+}
+
+/* 每个字段先判空再拼行：没有值就不产生 DOM 节点，因此不会留下空行 */
+function detailFactsHTML(job) {
+  var rows = [];
+  var salary = job.salaryText || job.salaryDesc || "";
+  if (salary) rows.push(detailRowHTML("薪资", esc(salary), "dl__val--salary"));
+
+  var city = cityBase(job);
+  if (city && city !== "城市未知") rows.push(detailRowHTML("城市", esc(city)));
+
+  if (job.experience) rows.push(detailRowHTML("经验", esc(job.experience)));
+  if (job.degree) rows.push(detailRowHTML("学历", esc(job.degree)));
+
+  var addr = detailAddress(job);
+  if (addr) rows.push(detailRowHTML("工作地址", esc(addr)));
+
+  var skills = detailTagsHTML(job.skills);
+  if (skills) rows.push(detailRowHTML("技能", skills));
+
+  var welfare = detailTagsHTML(job.welfareList);
+  if (welfare) rows.push(detailRowHTML("福利", welfare));
+
+  var bossName = typeof job.bossName === "string" ? job.bossName.trim() : "";
+  var bossTitle = typeof job.bossTitle === "string" ? job.bossTitle.trim() : "";
+  var act = activityText(job);
+  var bossHTML = "";
+  if (bossName) bossHTML += esc(bossName);
+  if (bossTitle) bossHTML += (bossName ? '<span class="sep">·</span>' : "") + esc(bossTitle);
+  if (act) bossHTML += '<span class="dl__act" title="招聘者近期活跃状态">' + esc(act) + "</span>";
+  if (bossHTML) rows.push(detailRowHTML("招聘者", bossHTML));
+
+  var published = formatTime(job.publishedAt);
+  if (published) rows.push(detailRowHTML("发布时间", esc(published)));
+
+  if (!rows.length) return "";
+  return '<div class="dl__facts">' + rows.join("") + "</div>";
+}
+
+function openDetail(jobId) {
+  var modal = $("#detailModal");
+  if (!modal || !jobId) return;
+  var job = jobs.filter(function (j) { return j.id === jobId; })[0];
+  if (!job) return;
+
+  var name = $("#detailName");
+  if (name) name.textContent = job.jobName || "";
+
+  var brand = $("#detailBrand");
+  if (brand) {
+    var brandHTML = esc(job.brandName || "");
+    if (job.brandIndustry) brandHTML += '<span class="sep">·</span>' + esc(job.brandIndustry);
+    brand.innerHTML = brandHTML;
+    brand.hidden = !brandHTML;
+  }
+
+  var facts = $("#detailFacts");
+  if (facts) facts.innerHTML = detailFactsHTML(job);
+
+  var body = jdText(job);
+  var desc = $("#detailDesc");
+  if (desc) {
+    /* 正文一律 textContent，换行交给 CSS pre-wrap，杜绝 HTML 注入 */
+    desc.textContent = body;
+    desc.hidden = !body;
+    desc.scrollTop = 0;
+  }
+  var hint = $("#detailDescHint");
+  if (hint) hint.hidden = !!body;
+
+  var url = safeUrl(job.jobUrl);
+  var link = $("#detailLink");
+  if (link) {
+    if (url) {
+      link.href = url;
+      link.hidden = false;
+    } else {
+      link.removeAttribute("href");
+      link.hidden = true;
+    }
+  }
+
+  var scroller = $("#detailScroll");
+  if (scroller) scroller.scrollTop = 0;
+
+  ui.detailId = job.id;
+  var active = document.activeElement;
+  detailReturnFocus = active && active.closest ? active.closest(".job") : null;
+
+  modal.classList.add("is-open");
+  var closeBtn = $("#detailClose");
+  if (closeBtn) window.setTimeout(function () { closeBtn.focus(); }, 30);
+}
+
+function closeDetail() {
+  var modal = $("#detailModal");
+  if (!modal || !modal.classList.contains("is-open")) return;
+  modal.classList.remove("is-open");
+  ui.detailId = null;
+  var back = detailReturnFocus;
+  detailReturnFocus = null;
+  if (back && document.contains(back)) window.setTimeout(function () { back.focus(); }, 20);
+}
+
+/* =========================================================
    状态变更
    ========================================================= */
 function toggleFavorite(jobId) {
@@ -2208,12 +2431,26 @@ function bindEvents() {
   var jobList = $("#jobList");
   if (jobList) {
     jobList.addEventListener("click", function (e) {
+      /* 卡片空白处进详情；按钮 / 链接 / 下拉 / 输入等交互元素一律留给各自的处理分支 */
+      var card = e.target.closest(".job");
+      if (card && !e.target.closest("button, a, select, input, textarea, label")) {
+        openDetail(card.dataset.id);
+        return;
+      }
       var fav = e.target.closest('[data-action="fav"]');
       if (fav) { toggleFavorite(fav.dataset.id); return; }
       var note = e.target.closest('[data-action="note"]');
       if (note) { openNote(note.dataset.id); return; }
       var jd = e.target.closest('[data-action="jd"]');
       if (jd) openJd(jd.dataset.id);
+    });
+    jobList.addEventListener("keydown", function (e) {
+      if (e.key !== "Enter" && e.key !== " " && e.key !== "Spacebar") return;
+      /* 只在卡片本身获得焦点时响应，内部控件的键盘事件不拦截 */
+      var card = e.target.closest(".job");
+      if (!card || e.target !== card) return;
+      e.preventDefault();
+      openDetail(card.dataset.id);
     });
     jobList.addEventListener("change", function (e) {
       var sel = e.target.closest('select[data-action="stage"]');
@@ -2276,6 +2513,17 @@ function bindEvents() {
   var jdClose = $("#jdClose");
   if (jdClose) jdClose.addEventListener("click", closeJd);
 
+  var detailModal = $("#detailModal");
+  if (detailModal) {
+    detailModal.addEventListener("click", function (e) {
+      if (e.target === detailModal) closeDetail();
+    });
+  }
+  var detailClose = $("#detailClose");
+  if (detailClose) detailClose.addEventListener("click", closeDetail);
+  var detailCloseFoot = $("#detailCloseFoot");
+  if (detailCloseFoot) detailCloseFoot.addEventListener("click", closeDetail);
+
   var fileInput = $("#fileInput");
   if (fileInput) {
     fileInput.addEventListener("change", function () {
@@ -2290,6 +2538,7 @@ function bindEvents() {
     closeCollect();
     closeNote();
     closeJd();
+    closeDetail();
   });
 }
 

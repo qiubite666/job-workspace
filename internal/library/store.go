@@ -90,7 +90,7 @@ func (s *Store) Save(username string, jobs []model.Job) error {
 
 // Merge 把列表包并入指定账号的职位库，返回新增数与总数。
 func (s *Store) Merge(username string, incoming []model.Job) (added, total int, err error) {
-	return s.mergeInto(username, incoming, false)
+	return s.mergeInto(username, incoming)
 }
 
 // UpsertDetails 把详情包并入指定账号的职位库。
@@ -198,8 +198,8 @@ func (s *Store) AdoptLegacy(globalPath, username string) (int, error) {
 	return len(legacy), nil
 }
 
-// mergeInto 是 Merge 的实现，detail 为 false 时走列表合并语义。
-func (s *Store) mergeInto(username string, incoming []model.Job, detail bool) (int, int, error) {
+// mergeInto 是 Merge 的实现：已有记录为底，列表包覆盖非空字段。
+func (s *Store) mergeInto(username string, incoming []model.Job) (int, int, error) {
 	path, err := s.pathFor(username)
 	if err != nil {
 		return 0, 0, err

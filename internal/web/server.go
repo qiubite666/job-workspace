@@ -391,7 +391,6 @@ func (s *Server) handleCollect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	username := sess.Username
-	before, _, _ := s.loadJobsFor(username)
 
 	executable, err := os.Executable()
 	if err != nil {
@@ -515,7 +514,6 @@ func (s *Server) handleCollect(w http.ResponseWriter, r *http.Request) {
 	if hasJSON && parsed.Added != nil && *parsed.Added > added {
 		added = *parsed.Added
 	}
-	_ = before
 
 	report := model.Report{}
 	if hasJSON && parsed.Report != nil {
@@ -582,7 +580,7 @@ func (s *Server) loadJobsFor(username string) ([]model.Job, string, error) {
 	if s.lib == nil {
 		return []model.Job{}, "empty", nil
 	}
-	jobs, updatedAt, err := s.lib.Load(username)
+	jobs, _, err := s.lib.Load(username)
 	if err != nil {
 		return []model.Job{}, "empty", fmt.Errorf("读取职位库失败: %w", err)
 	}
@@ -590,7 +588,6 @@ func (s *Server) loadJobsFor(username string) ([]model.Job, string, error) {
 	if len(jobs) > 0 {
 		source = "collected"
 	}
-	_ = updatedAt
 	return jobs, source, nil
 }
 
