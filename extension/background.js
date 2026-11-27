@@ -363,7 +363,7 @@ async function runAutofill(server, token, tabId, template, items) {
       var result = await chrome.tabs.sendMessage(tabId, {
         type: "BOSS_AUTOFILL_FETCH",
         template: template,
-        securityId: item.securityID
+        securityId: String(item.securityId || item.securityID || "").trim()
       });
 
       var blocked = !result || !result.ok;
