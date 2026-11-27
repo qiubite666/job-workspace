@@ -123,6 +123,7 @@ svg{display:block}
 .lbl{font-size:12px;color:var(--muted);letter-spacing:.04em}
 .hint{font-size:12px;color:var(--muted);line-height:1.65;margin-top:10px;overflow-wrap:anywhere}
 .hint strong{color:var(--text);font-weight:600}
+.hint.is-warn{color:#8a5a00}
 
 .form-row{display:flex;flex-direction:column;gap:6px;min-width:0;margin:0}
 .form-row textarea{
@@ -411,6 +412,27 @@ svg{display:block}
         <button class="btn btn--danger" type="button" data-action="open-clear">
           <svg class="i" aria-hidden="true"><use href="#i-trash"></use></svg>清空当前账号职位库
         </button>
+      </div>
+    </section>
+
+    <!-- ============ 卡片三之二：批量补全职位描述 ============ -->
+    <section class="card" aria-labelledby="fillTitle">
+      <div class="card__head">
+        <div class="card__headL">
+          <span class="card__ico"><svg class="i" aria-hidden="true"><use href="#i-refresh"></use></svg></span>
+          <h2 class="card__title" id="fillTitle">补全职位描述</h2>
+        </div>
+        <span class="card__hint">需要浏览器扩展</span>
+      </div>
+      <div class="card__body">
+        <p class="hint" id="fillPending">正在统计待补数量…</p>
+        <div class="row-actions">
+          <button class="btn btn--primary" type="button" data-action="autofill-start">开始补全（20 条）</button>
+          <button class="btn btn--ghost" type="button" data-action="autofill-stop">停止</button>
+        </div>
+        <p class="hint" id="fillStatus" role="status" aria-live="polite">
+          首次使用需先在 BOSS 手动点开一个职位，让扩展学到请求格式。补全会在后台进行，可关闭本页。
+        </p>
       </div>
     </section>
 
