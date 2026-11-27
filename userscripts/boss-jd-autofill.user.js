@@ -1,53 +1,130 @@
 // ==UserScript==
 // @name         BOSS 职位描述补全
 // @namespace    jobworkspace.local
-// @version      1.0.0
-// @description  在 BOSS 搜索结果页自动补全缺失的职位描述：读取当前页面卡片的 securityId，逐条请求详情并写回自己的职位库
+// @version      2.0.0
+// @description  在 BOSS 列表页按间隔自动打开待补岗位，详情页截获页面自己的请求并写回职位库
 // @match        https://www.zhipin.com/*
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getValue
 // @grant        GM_setValue
+// @grant        unsafeWindow
 // @connect      job.qiubite.fun
 // @connect      *
 // @run-at       document-idle
 // ==/UserScript==
 
 /**
- * 为什么这么做：
- * BOSS 的详情接口需要 securityId，而它是列表下发、短时效的凭据。
- * 用库里几小时前的 securityId 重放会被判定无效（接口返回 code 37）。
- * 所以脚本只在"当前页面已经渲染出卡片"时工作——securityId 就是页面刚拿到的那个，
- * 与页面自己发请求没有任何区别。
+ * 两个模式，同一个文件：
  *
- * 它不会自己翻页、不会搜索、不会点击：你正常浏览，它把当前页缺描述的岗位补上。
+ * 列表页（driver）：读取服务端"待补岗位"，按设定间隔依次打开对应卡片链接。
+ * 详情页（capture）：截获页面自己发出的详情响应，原样上报后自动关闭标签页。
+ *
+ * 为什么不自己拼接口地址：BOSS 的详情接口除了 securityId 还要别的参数，
+ * 自己拼会 404；而页面自己发的那次请求一定是对的，截获它最稳。
  */
 (function () {
   "use strict";
 
-  var DEFAULTS = {
-    server: "https://job.qiubite.fun",
-    token: "",
-    interval: 12,   // 秒
-    limit: 100      // 单次拉取的待补数量
-  };
-
+  var DEFAULTS = { server: "https://job.qiubite.fun", token: "", interval: 12, limit: 100 };
   var cfg = Object.assign({}, DEFAULTS, GM_getValue("cfg", {}));
 
-  var state = {
-    running: false,
-    done: 0,
-    failed: 0,
-    skipped: 0,
-    queue: [],
-    seen: {},        // 本次会话已处理过的岗位 id
-    pending: {},     // 服务端说的待补岗位 id
-    timer: 0,
-    failStreak: 0,
-    lastError: ""
-  };
+  var IS_DETAIL = /\/job_detail\//.test(location.pathname);
+  var DETAIL_API = "/wapi/zpgeek/job/detail.json";
 
-  /* ---------------- 界面 ---------------- */
+  if (IS_DETAIL) {
+    captureMode();
+    return;
+  }
+
+  /* ==================== 详情页：截获并上报 ==================== */
+  function captureMode() {
+    var jobId = (location.pathname.match(/\/job_detail\/([A-Za-z0-9_-]+)\.html/) || [])[1] || "";
+    if (!jobId) return;
+
+    var posted = false;
+
+    function report(raw) {
+      if (posted) return;
+      posted = true;
+
+      GM_xmlhttpRequest({
+        method: "POST",
+        url: cfg.server + "/api/ingest",
+        headers: { "Content-Type": "application/json", "X-Ingest-Token": cfg.token },
+        data: JSON.stringify({ platform: "boss", kind: "detail", jobId: jobId, raw: raw }),
+        timeout: 20000,
+        onload: function (res) {
+          var ok = res.status === 200 && /"ok"\s*:\s*true/.test(res.responseText);
+          badge(ok ? "已补全" : "上报失败 " + res.status, ok);
+          window.setTimeout(closeSelf, ok ? 1500 : 4000);
+        },
+        onerror: function () { badge("网络错误", false); window.setTimeout(closeSelf, 4000); },
+        ontimeout: function () { badge("上报超时", false); window.setTimeout(closeSelf, 4000); }
+      });
+    }
+
+    function closeSelf() {
+      // 只对脚本打开的标签页安全：用户手动打开的窗口 close 会被浏览器忽略
+      try { window.close(); } catch (e) { /* 忽略 */ }
+    }
+
+    function badge(text, ok) {
+      var d = document.createElement("div");
+      d.textContent = "JD 补全：" + text;
+      d.style.cssText = "position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:2147483000;"
+        + "padding:8px 14px;border-radius:999px;font:13px/1.4 -apple-system,sans-serif;color:#fff;"
+        + "background:" + (ok ? "#137333" : "#b3261e") + ";box-shadow:0 6px 20px rgba(0,0,0,.2)";
+      document.body.appendChild(d);
+      window.setTimeout(function () { d.remove(); }, 4000);
+    }
+
+    // 截获页面 fetch（只旁听，不改变原响应）
+    try {
+      var rawFetch = unsafeWindow.fetch;
+      if (typeof rawFetch === "function") {
+        unsafeWindow.fetch = function () {
+          var p = rawFetch.apply(this, arguments);
+          try {
+            var url = String(arguments[0] && arguments[0].url ? arguments[0].url : arguments[0] || "");
+            if (url.indexOf(DETAIL_API) !== -1) {
+              p.then(function (res) {
+                res.clone().json().then(report).catch(function () {});
+              }).catch(function () {});
+            }
+          } catch (e) { /* 忽略 */ }
+          return p;
+        };
+      }
+    } catch (e) { /* 权限不足时静默降级 */ }
+
+    // 兜底：少数实现走 XHR
+    try {
+      var XO = unsafeWindow.XMLHttpRequest;
+      if (XO && XO.prototype) {
+        var rawOpen = XO.prototype.open;
+        var rawSend = XO.prototype.send;
+        XO.prototype.open = function (method, url) {
+          this.__jwUrl = String(url || "");
+          return rawOpen.apply(this, arguments);
+        };
+        XO.prototype.send = function () {
+          var xhr = this;
+          if (String(xhr.__jwUrl || "").indexOf(DETAIL_API) !== -1) {
+            xhr.addEventListener("load", function () {
+              try { report(JSON.parse(xhr.responseText)); } catch (e) { /* 忽略 */ }
+            });
+          }
+          return rawSend.apply(this, arguments);
+        };
+      }
+    } catch (e) { /* 忽略 */ }
+  }
+
+  /* ==================== 列表页：按间隔打开 ==================== */
   var el = {};
+  var state = { running: false, opened: 0, timer: 0, hrefs: [], pending: {}, seen: {} };
+
+  buildPanel();
 
   function buildPanel() {
     var box = document.createElement("div");
@@ -64,12 +141,12 @@
       '    <button type="button" id="jw-stop">停止</button>' +
       '  </div>' +
       '  <div class="jw-status" id="jw-status">未运行</div>' +
-      '  <div class="jw-hint">仅在当前已渲染的卡片上工作；向下滚动出现新卡片会自动接着补。</div>' +
+      '  <div class="jw-hint">按间隔逐个打开待补岗位，详情页补完自动关闭。只处理当前页已出现的卡片。</div>' +
       "</div>";
 
     var style = document.createElement("style");
     style.textContent = [
-      "#jw-jd-panel{position:fixed;right:16px;bottom:16px;width:268px;z-index:2147483000;",
+      "#jw-jd-panel{position:fixed;right:16px;bottom:16px;width:272px;z-index:2147483000;",
       "background:#fff;color:#1b1b1f;border:1px solid rgba(0,0,0,.12);border-radius:14px;",
       "box-shadow:0 12px 32px rgba(0,0,0,.16);font:13px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}",
       "#jw-jd-panel .jw-hd{display:flex;align-items:center;justify-content:space-between;",
@@ -104,14 +181,15 @@
     el.server.value = cfg.server || "";
     el.token.value = cfg.token || "";
     el.interval.value = cfg.interval || 12;
+    el.stop.disabled = true;
 
     box.querySelector(".jw-min").addEventListener("click", function () {
       box.classList.toggle("jw-collapsed");
     });
-
     el.save.addEventListener("click", saveCfg);
     el.start.addEventListener("click", start);
     el.stop.addEventListener("click", stop);
+    el.interval.addEventListener("change", saveCfg);
   }
 
   function saveCfg() {
@@ -124,35 +202,8 @@
     setStatus("已保存");
   }
 
-  function setStatus(text) {
-    if (el.status) el.status.textContent = text;
-  }
+  function setStatus(t) { if (el.status) el.status.textContent = t; }
 
-  /* ---------------- 数据 ---------------- */
-
-  /** 从页面上已渲染的卡片里收集 {id, securityId}。 */
-  function collectCards() {
-    var out = [];
-    var links = document.querySelectorAll('a[href*="/job_detail/"]');
-    for (var i = 0; i < links.length; i++) {
-      var href = links[i].getAttribute("href") || "";
-      var m = href.match(/\/job_detail\/([A-Za-z0-9_-]+)\.html/);
-      if (!m) continue;
-
-      var sid = "";
-      try {
-        sid = new URL(href, location.href).searchParams.get("securityId") || "";
-      } catch (e) {
-        sid = "";
-      }
-      if (!sid) continue;
-
-      out.push({ id: m[1], securityId: sid });
-    }
-    return out;
-  }
-
-  /** 拉取当前账号待补岗位（缺描述且有 securityId 的记录）。 */
   function fetchPending(done, fail) {
     GM_xmlhttpRequest({
       method: "GET",
@@ -165,190 +216,78 @@
           var data = JSON.parse(res.responseText);
           if (!data || !data.ok) return fail((data && data.error) || "BAD_RESPONSE");
           done(data);
-        } catch (e) {
-          fail("解析失败");
-        }
+        } catch (e) { fail("解析失败"); }
       },
       onerror: function () { fail("网络错误"); },
       ontimeout: function () { fail("超时"); }
     });
   }
 
-  function postDetail(jobId, raw, done, fail) {
-    GM_xmlhttpRequest({
-      method: "POST",
-      url: cfg.server + "/api/ingest",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Ingest-Token": cfg.token
-      },
-      data: JSON.stringify({ platform: "boss", kind: "detail", jobId: jobId, raw: raw }),
-      timeout: 20000,
-      onload: function (res) {
-        if (res.status !== 200) return fail("入库 HTTP " + res.status);
-        try {
-          var data = JSON.parse(res.responseText);
-          if (!data || !data.ok) return fail((data && data.error) || "INGEST_FAILED");
-          done(data);
-        } catch (e) {
-          fail("入库响应解析失败");
-        }
-      },
-      onerror: function () { fail("入库网络错误"); },
-      ontimeout: function () { fail("入库超时"); }
-    });
-  }
-
-  /* ---------------- 调度 ---------------- */
-
-  function scan() {
-    if (!state.running) return;
-
-    var cards = collectCards();
-    var added = 0;
-    for (var i = 0; i < cards.length; i++) {
-      var c = cards[i];
-      if (state.seen[c.id]) continue;
-      if (!state.pending[c.id]) continue;   // 服务端说已经补过的不动
-      state.seen[c.id] = true;
-      state.queue.push(c);
-      added++;
+  /** 收集当前页卡片里属于"待补"的链接（带页面刚下发的 securityId）。 */
+  function collectTargets() {
+    var out = [];
+    var links = document.querySelectorAll('a[href*="/job_detail/"]');
+    for (var i = 0; i < links.length; i++) {
+      var href = links[i].href || "";
+      var m = href.match(/\/job_detail\/([A-Za-z0-9_-]+)\.html/);
+      if (!m) continue;
+      var id = m[1];
+      if (!state.pending[id] || state.seen[id]) continue;
+      state.seen[id] = true;
+      out.push(href);
     }
-
-    if (added) {
-      setStatus("新发现 " + added + " 条可补，队列 " + state.queue.length);
-    }
-    pump();
-  }
-
-  function pump() {
-    if (!state.running) return;
-    if (state.timer) return;          // 正在等待间隔
-    if (!state.queue.length) {
-      setStatus("待补 " + state.done + " 条 · 当前页面暂无可补岗位，滚动列表试试");
-      return;
-    }
-
-    var item = state.queue.shift();
-    setStatus("请求中：" + item.id + "（剩 " + state.queue.length + " 条）");
-
-    requestDetail(item.securityId, function (raw) {
-      postDetail(item.id, raw, function (data) {
-        state.done++;
-        state.failStreak = 0;
-        setStatus("已完成 " + state.done + " 条" + (state.failed ? "，失败 " + state.failed : ""));
-        scheduleNext();
-      }, function (err) {
-        onFail("入库失败 " + err);
-      });
-    }, function (err) {
-      onFail(err);
-    });
-  }
-
-  function requestDetail(securityId, done, fail) {
-    var url = "/wapi/zpgeek/job/detail.json?securityId=" + encodeURIComponent(securityId);
-    fetch(url, { credentials: "include", headers: { Accept: "application/json" } })
-      .then(function (r) {
-        if (!r.ok) throw new Error("HTTP " + r.status);
-        return r.json();
-      })
-      .then(function (data) {
-        if (!data || (typeof data.code === "number" && data.code !== 0)) {
-          throw new Error("接口 code " + (data && data.code) + (data && data.message ? "：" + data.message : ""));
-        }
-        done(data);
-      })
-      .catch(function (e) { fail(String(e && e.message ? e.message : e)); });
-  }
-
-  function onFail(msg) {
-    state.failed++;
-    state.failStreak++;
-    state.lastError = msg;
-
-    if (state.failStreak >= 3) {
-      stop();
-      setStatus("已自动停止：连续 3 次失败（" + msg + "）");
-      return;
-    }
-    setStatus("失败 " + state.failed + " 次（" + msg + "）");
-    scheduleNext();
-  }
-
-  function scheduleNext() {
-    if (!state.running) return;
-    var ms = Math.max(5, cfg.interval) * 1000;
-    state.timer = window.setTimeout(function () {
-      state.timer = 0;
-      pump();
-    }, ms);
+    return out;
   }
 
   function start() {
     if (state.running) return;
-    if (!cfg.server || !cfg.token) {
-      setStatus("请先填写服务端与令牌并保存");
-      return;
-    }
+    if (!cfg.server || !cfg.token) return setStatus("请先填写服务端与令牌并保存");
 
     setStatus("正在读取待补列表…");
     fetchPending(function (data) {
       state.pending = {};
       var items = data.items || [];
-      for (var i = 0; i < items.length; i++) {
-        state.pending[items[i].externalId] = true;
+      for (var i = 0; i < items.length; i++) state.pending[items[i].externalId] = true;
+
+      state.hrefs = collectTargets();
+      if (!state.hrefs.length) {
+        return setStatus("当前页没有待补岗位（共 " + data.total + " 条待补，换个搜索词或往下滚）");
       }
 
       state.running = true;
-      state.failStreak = 0;
       el.start.disabled = true;
       el.stop.disabled = false;
-
-      setStatus("待补 " + data.total + " 条，开始扫描当前页…");
-      window.setInterval(function () {
-        if (state.running) scan();
-      }, 3000);
-      scan();
-
-      // 页面滚动/加载新卡片时也扫一次
-      window.addEventListener("scroll", throttledScan, { passive: true });
-    }, function (err) {
-      setStatus("读取待补列表失败：" + err);
-    });
+      setStatus("本页可补 " + state.hrefs.length + " 条，开始…");
+      openNext();
+    }, function (err) { setStatus("读取待补列表失败：" + err); });
   }
 
-  var scanTimer = 0;
-  function throttledScan() {
-    if (!state.running || scanTimer) return;
-    scanTimer = window.setTimeout(function () {
-      scanTimer = 0;
-      scan();
-    }, 1200);
+  function openNext() {
+    if (!state.running) return;
+
+    if (!state.hrefs.length) {
+      stop();
+      return setStatus("本页任务完成，共打开 " + state.opened + " 个。换搜索词或滚动后再开始");
+    }
+
+    var href = state.hrefs.shift();
+    state.opened++;
+    setStatus("打开第 " + state.opened + " 个（剩 " + state.hrefs.length + "）");
+
+    // 用真实链接打开：securityId 是页面刚下发的，和手动点击完全一致
+    var win = window.open(href, "_blank");
+    if (!win) {
+      stop();
+      return setStatus("浏览器拦截了弹窗，请允许本站弹出窗口后重试");
+    }
+
+    state.timer = window.setTimeout(openNext, Math.max(5, cfg.interval) * 1000);
   }
 
   function stop() {
     state.running = false;
-    if (state.timer) {
-      window.clearTimeout(state.timer);
-      state.timer = 0;
-    }
+    if (state.timer) { window.clearTimeout(state.timer); state.timer = 0; }
     el.start.disabled = false;
     el.stop.disabled = true;
-  }
-
-  /* ---------------- 启动 ---------------- */
-  function boot() {
-    buildPanel();
-    el.stop.disabled = true;
-    el.interval.addEventListener("change", saveCfg);
-    el.server.addEventListener("change", saveCfg);
-    el.token.addEventListener("change", saveCfg);
-  }
-
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", boot);
-  } else {
-    boot();
   }
 })();
