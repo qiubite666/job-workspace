@@ -1140,6 +1140,92 @@ async function submitClear() {
 /* =========================================================
    交互层：退出登录
    ========================================================= */
+/* ---------- 批量补全：通过页面桥通知扩展 ---------- */
+var PAGE_TAG = "wb-bridge";
+var fillAckTimer = 0;
+
+function postToBridge(payload) {
+  var msg = { source: PAGE_TAG, type: payload.type };
+  if (payload.limit) msg.limit = payload.limit;
+  window.postMessage(msg, location.origin);
+}
+
+function setFillStatus(text, isWarn) {
+  var el = $("#fillStatus");
+  if (!el) return;
+  el.textContent = text || "";
+  el.classList.toggle("is-warn", !!isWarn);
+}
+
+function renderFillState(state) {
+  if (!state) return;
+  if (state.running) {
+    setFillStatus("进行中 " + state.done + "/" + state.total
+      + (state.failed ? "，失败 " + state.failed : "")
+      + (state.lastError ? "（" + state.lastError + "）" : ""));
+    return;
+  }
+  if (state.reason === "DONE") setFillStatus("已完成 " + state.done + " 条");
+  else if (state.reason === "BLOCKED") setFillStatus("已中止：连续失败，可能被限流（" + (state.lastError || "") + "）", true);
+  else if (state.reason === "STOPPED") setFillStatus("已停止，完成 " + state.done + " 条");
+}
+
+async function loadPendingCount() {
+  var el = $("#fillPending");
+  if (!el) return;
+  try {
+    var out = await api("/api/me/library/pending-jd?limit=1");
+    if (out && out.ok && out.data && out.data.ok) {
+      el.textContent = out.data.total > 0
+        ? "待补 " + out.data.total + " 条（缺描述且已拿到 securityId）"
+        : "没有待补的岗位（先滚动一次 BOSS 列表拿 securityId）";
+    } else {
+      el.textContent = "待补数量获取失败";
+    }
+  } catch (err) {
+    el.textContent = "待补数量获取失败";
+  }
+}
+
+function startAutofillFromPage() {
+  setFillStatus("正在通知扩展…");
+  postToBridge({ type: "AUTOFILL_START", limit: 20 });
+
+  window.clearTimeout(fillAckTimer);
+  fillAckTimer = window.setTimeout(function () {
+    setFillStatus("未检测到扩展响应：请确认已安装并刷新扩展（v1.5.0）", true);
+  }, 2000);
+}
+
+window.addEventListener("message", function (event) {
+  if (event.source !== window) return;
+  var data = event.data;
+  if (!data || data.source !== PAGE_TAG) return;
+
+  if (data.type === "AUTOFILL_ACK") {
+    window.clearTimeout(fillAckTimer);
+    if (data.ok) {
+      setFillStatus("已启动，共 " + data.total + " 条，后台进行中…");
+      loadPendingCount();
+    } else {
+      var map = {
+        NEED_MANUAL: "请先在 BOSS 手动点开一个职位（让扩展学到请求格式）",
+        NO_BOSS_TAB: "请先打开一个 BOSS 页面",
+        NOT_CONFIGURED: "扩展里还没填服务端地址或令牌",
+        NOTHING_TO_DO: "没有可补的岗位",
+        RUNNING: "已有任务在进行"
+      };
+      setFillStatus(map[data.error] || ("启动失败：" + (data.error || "未知")), true);
+    }
+    return;
+  }
+
+  if (data.type === "AUTOFILL_STATE") {
+    renderFillState(data.state);
+    if (data.state && !data.state.running) loadPendingCount();
+  }
+});
+
 async function doLogout() {
   try {
     await api("/api/auth/logout", { method: "POST", body: {} });
