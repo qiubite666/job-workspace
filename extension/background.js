@@ -214,6 +214,18 @@ async function handleIngest(payload) {
 }
 
 chrome.runtime.onMessage.addListener(function (message, sender, sendResponse) {
+  if (message && message.type === "BOSS_AUTOFILL_START") {
+    startAutofill(message.limit).then(sendResponse, function (err) {
+      sendResponse({ ok: false, error: "START_FAILED", message: String(err) });
+    });
+    return true;
+  }
+  if (message && message.type === "BOSS_AUTOFILL_STOP") {
+    autofill.stop = true;
+    sendResponse({ ok: true });
+    return false;
+  }
+
   if (!message || message.type !== "BOSS_INGEST_RELAY") return false;
 
   handleIngest(message.payload).then(sendResponse, function (err) {
@@ -231,3 +243,121 @@ chrome.runtime.onMessage.addListener(function (message, sender, sendResponse) {
 chrome.runtime.onInstalled.addListener(function () {
   setBadge("", null);
 });
+
+/* =========================================================
+   批量补 JD
+   ---------------------------------------------------------
+   由用户手动触发，速率固定 6-9 秒一条：慢是刻意的，目的是让请求
+   看起来像正常浏览，避免触发风控。连续 3 次失败立即停。
+   ========================================================= */
+var autofill = { running: false, done: 0, total: 0, failed: 0, reason: "", stop: false };
+
+var AUTOFILL_MIN_GAP_MS = 6000;
+var AUTOFILL_JITTER_MS = 3000;
+var AUTOFILL_MAX_BATCH = 50;
+
+function sleep(ms) {
+  return new Promise(function (resolve) { setTimeout(resolve, ms); });
+}
+
+async function publishAutofill() {
+  await chrome.storage.local.set({
+    autofillState: {
+      running: autofill.running,
+      done: autofill.done,
+      total: autofill.total,
+      failed: autofill.failed,
+      reason: autofill.reason
+    }
+  });
+}
+
+async function fetchPending(server, token, limit) {
+  var response = await fetch(server + "/api/me/library/pending-jd?limit=" + encodeURIComponent(limit), {
+    headers: { "X-Ingest-Token": token }
+  });
+  if (!response.ok) throw new Error("HTTP " + response.status);
+  return response.json();
+}
+
+async function pickBossTab() {
+  var tabs = await chrome.tabs.query({ url: "https://www.zhipin.com/*" });
+  return tabs && tabs.length ? tabs[0] : null;
+}
+
+async function startAutofill(limit) {
+  if (autofill.running) return { ok: false, error: "RUNNING" };
+
+  var cfg = await chrome.storage.local.get(["serverUrl", "token"]);
+  var server = normalizeServer(cfg.serverUrl);
+  var token = String(cfg.token || "").trim();
+  if (!server || !token) return { ok: false, error: "NOT_CONFIGURED" };
+
+  var tab = await pickBossTab();
+  if (!tab) return { ok: false, error: "NO_BOSS_TAB" };
+
+  var batch = Math.min(Math.max(parseInt(limit, 10) || 20, 1), AUTOFILL_MAX_BATCH);
+
+  var pending;
+  try {
+    pending = await fetchPending(server, token, batch);
+  } catch (err) {
+    return { ok: false, error: "FETCH_FAILED", message: String(err && err.message ? err.message : err) };
+  }
+
+  var items = (pending && Array.isArray(pending.items)) ? pending.items : [];
+  if (!items.length) return { ok: false, error: "NOTHING_TO_DO" };
+
+  autofill = { running: true, done: 0, total: items.length, failed: 0, reason: "", stop: false };
+  await publishAutofill();
+
+  // 不 await：让消息立即返回，进度通过 storage 推给弹窗。
+  runAutofill(server, token, tab.id, items);
+  return { ok: true, total: items.length };
+}
+
+async function runAutofill(server, token, tabId, items) {
+  var consecutiveFail = 0;
+
+  for (var i = 0; i < items.length; i++) {
+    if (autofill.stop) { autofill.reason = "STOPPED"; break; }
+
+    var item = items[i];
+    try {
+      var result = await chrome.tabs.sendMessage(tabId, {
+        type: "BOSS_AUTOFILL_FETCH",
+        securityId: item.securityID
+      });
+
+      var blocked = !result || !result.ok;
+      if (!blocked && result.data && typeof result.data.code === "number" && result.data.code !== 0) {
+        blocked = true;
+      }
+
+      if (blocked) {
+        consecutiveFail++;
+        autofill.failed++;
+      } else {
+        consecutiveFail = 0;
+        await handleIngest({ kind: "detail", jobId: item.externalId, raw: result.data, query: "", city: "" });
+      }
+    } catch (err) {
+      // 标签页被关掉或页面导航走了，都会走到这里
+      consecutiveFail++;
+      autofill.failed++;
+    }
+
+    autofill.done++;
+    await publishAutofill();
+
+    // 连续失败通常意味着被限流或掉登录，继续跑只会更糟。
+    if (consecutiveFail >= 3) { autofill.reason = "BLOCKED"; break; }
+    if (i < items.length - 1 && !autofill.stop) {
+      await sleep(AUTOFILL_MIN_GAP_MS + Math.random() * AUTOFILL_JITTER_MS);
+    }
+  }
+
+  autofill.running = false;
+  if (!autofill.reason) autofill.reason = "DONE";
+  await publishAutofill();
+}

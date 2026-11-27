@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -270,5 +271,77 @@ func (s *Server) handleClearMyLibrary(w http.ResponseWriter, r *http.Request) {
 		"ok":      true,
 		"cleared": removed,
 		"at":      time.Now().UTC().Format(time.RFC3339),
+	})
+}
+
+// pendingJDItem 是待补 JD 的最小信息集。
+type pendingJDItem struct {
+	ID         string `json:"id"`
+	ExternalID string `json:"externalId"`
+	SecurityID string `json:"securityId"`
+	JobName    string `json:"jobName"`
+}
+
+// handlePendingJD 返回当前账号"缺 JD 且具备抓取条件"的岗位。
+//
+// 既支持会话鉴权，也支持上报令牌：扩展后台没有登录 Cookie，
+// 但它手里有该账号的令牌，用令牌反查账号即可。
+func (s *Server) handlePendingJD(w http.ResponseWriter, r *http.Request) {
+	username := ""
+	if sess, ok := s.currentSession(r); ok {
+		username = sess.Username
+	} else if u, ok := s.resolveIngestUser(r); ok {
+		username = u
+	}
+	if username == "" {
+		writeError(w, http.StatusUnauthorized, "UNAUTHORIZED", "请先登录")
+		return
+	}
+	if s.lib == nil {
+		writeError(w, http.StatusServiceUnavailable, "STORE_UNAVAILABLE", "职位库不可用")
+		return
+	}
+
+	limit := 30
+	if v := strings.TrimSpace(r.URL.Query().Get("limit")); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			limit = n
+		}
+	}
+	if limit > 100 {
+		limit = 100
+	}
+
+	jobs, _, err := s.lib.Load(username)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "STORE_READ_FAILED", "读取职位库失败")
+		return
+	}
+
+	items := make([]pendingJDItem, 0, limit)
+	pending := 0
+	for _, j := range jobs {
+		if strings.TrimSpace(j.Description) != "" {
+			continue
+		}
+		// 没有 securityId 的记录抓不到（BOSS 会返回空页面），不算进待补。
+		if strings.TrimSpace(j.SecurityID) == "" || strings.TrimSpace(j.ExternalID) == "" {
+			continue
+		}
+		pending++
+		if len(items) < limit {
+			items = append(items, pendingJDItem{
+				ID:         j.ID,
+				ExternalID: j.ExternalID,
+				SecurityID: j.SecurityID,
+				JobName:    j.JobName,
+			})
+		}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"ok":    true,
+		"total": pending,
+		"items": items,
 	})
 }

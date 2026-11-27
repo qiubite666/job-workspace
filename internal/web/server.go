@@ -160,6 +160,8 @@ func New(cfg *config.Config, st *store.Store, log *slog.Logger) *Server {
 	mux.HandleFunc("GET /api/me/library/export", s.requireAuth(s.handleExportMyLibrary))
 	mux.HandleFunc("POST /api/me/library/import", s.requireAuth(s.handleImportMyLibrary))
 	mux.HandleFunc("POST /api/me/library/clear", s.requireAuth(s.handleClearMyLibrary))
+	// 扩展后台用令牌调用，故不加 requireAuth；鉴权在 handler 内完成。
+	mux.HandleFunc("GET /api/me/library/pending-jd", s.handlePendingJD)
 
 	// 认证
 	mux.HandleFunc("POST /api/auth/login", s.handleLogin)

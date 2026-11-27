@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "BOSS 岗位采集桥",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "旁听 BOSS 直聘页面的岗位列表与职位详情响应并上报到自建服务，不读取任何登录凭据。",
   "minimum_chrome_version": "111",
   "permissions": [
@@ -24,16 +24,35 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://www.zhipin.com/*"],
-      "js": ["content.js"],
+      "matches": [
+        "https://www.zhipin.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
       "run_at": "document_start",
       "world": "MAIN",
       "all_frames": false
     },
     {
-      "matches": ["https://www.zhipin.com/*"],
-      "js": ["relay.js"],
+      "matches": [
+        "https://www.zhipin.com/*"
+      ],
+      "js": [
+        "relay.js"
+      ],
       "run_at": "document_start",
+      "world": "ISOLATED",
+      "all_frames": false
+    },
+    {
+      "matches": [
+        "https://www.zhipin.com/*"
+      ],
+      "js": [
+        "autofill.js"
+      ],
+      "run_at": "document_end",
       "world": "ISOLATED",
       "all_frames": false
     }

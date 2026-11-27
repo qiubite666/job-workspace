@@ -8,7 +8,10 @@ var els = {
   token: document.getElementById("token"),
   save: document.getElementById("save"),
   test: document.getElementById("test"),
-  status: document.getElementById("status")
+  status: document.getElementById("status"),
+  autofillMeta: document.getElementById("autofillMeta"),
+  autofillStart: document.getElementById("autofillStart"),
+  autofillStop: document.getElementById("autofillStop")
 };
 
 var slots = {
@@ -165,6 +168,58 @@ async function testConnection() {
   }
 }
 
+/* ---------- 批量补 JD ---------- */
+var AUTOFILL_LIMIT = 20;
+
+function describeAutofill(state) {
+  if (!state || (!state.running && !state.done)) return "批量补 JD：未运行";
+  if (state.running) {
+    return "批量补 JD：进行中 " + state.done + "/" + state.total
+      + (state.failed ? "，失败 " + state.failed : "");
+  }
+  if (state.reason === "DONE") return "批量补 JD：完成 " + state.done + " 条";
+  if (state.reason === "BLOCKED") return "批量补 JD：已中止（连续失败，可能被限流）";
+  if (state.reason === "STOPPED") return "批量补 JD：已停止，完成 " + state.done + " 条";
+  return "批量补 JD：完成 " + state.done + " 条";
+}
+
+function renderAutofill(state) {
+  if (!els.autofillMeta) return;
+  els.autofillMeta.textContent = describeAutofill(state);
+  var running = !!(state && state.running);
+  if (els.autofillStart) els.autofillStart.disabled = running;
+  if (els.autofillStop) els.autofillStop.disabled = !running;
+}
+
+async function startAutofill() {
+  if (els.autofillStart) els.autofillStart.disabled = true;
+  try {
+    var res = await chrome.runtime.sendMessage({ type: "BOSS_AUTOFILL_START", limit: AUTOFILL_LIMIT });
+    if (!res || !res.ok) {
+      var map = {
+        NOT_CONFIGURED: "请先填写服务端地址与 token",
+        NO_BOSS_TAB: "请先打开一个 BOSS 页面（zhipin.com）",
+        NOTHING_TO_DO: "没有可补的岗位（需要先滚动一次列表拿到 securityId）",
+        RUNNING: "已有任务在进行",
+        FETCH_FAILED: "读取待补列表失败"
+      };
+      els.autofillMeta.textContent = "批量补 JD：" + (map[res && res.error] || (res && res.message) || "启动失败");
+      if (els.autofillStart) els.autofillStart.disabled = false;
+      return;
+    }
+    els.autofillMeta.textContent = "批量补 JD：已启动，共 " + res.total + " 条";
+  } catch (err) {
+    els.autofillMeta.textContent = "批量补 JD：启动失败（" + String(err) + "）";
+    if (els.autofillStart) els.autofillStart.disabled = false;
+  }
+}
+
+async function stopAutofill() {
+  try {
+    await chrome.runtime.sendMessage({ type: "BOSS_AUTOFILL_STOP" });
+  } catch (err) { /* 忽略：后台可能已停 */ }
+}
+
 async function init() {
   try {
     var cfg = await chrome.storage.local.get(["serverUrl", "token", "lastListResult", "lastDetailResult"]);
@@ -172,10 +227,15 @@ async function init() {
     els.token.value = cfg.token || "";
     renderResult(slots.list, cfg.lastListResult || null);
     renderResult(slots.detail, cfg.lastDetailResult || null);
+    var st = await chrome.storage.local.get(["autofillState"]);
+    renderAutofill(st.autofillState || null);
   } catch (e) {
     setStatus("读取配置失败", true);
   }
 }
+
+if (els.autofillStart) els.autofillStart.addEventListener("click", startAutofill);
+if (els.autofillStop) els.autofillStop.addEventListener("click", stopAutofill);
 
 els.save.addEventListener("click", saveConfig);
 els.test.addEventListener("click", testConnection);
@@ -187,6 +247,7 @@ chrome.storage.onChanged.addListener(function (changes, area) {
   if (area !== "local") return;
   if (changes.lastListResult) renderResult(slots.list, changes.lastListResult.newValue || null);
   if (changes.lastDetailResult) renderResult(slots.detail, changes.lastDetailResult.newValue || null);
+  if (changes.autofillState) renderAutofill(changes.autofillState.newValue || null);
 });
 
 init();
