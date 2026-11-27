@@ -228,6 +228,11 @@ chrome.runtime.onMessage.addListener(function (message, sender, sendResponse) {
 
   if (!message || message.type !== "BOSS_INGEST_RELAY") return false;
 
+  if (message.payload && message.payload.kind === "detail" && message.payload.sourceUrl) {
+    // 记住最近一次成功的详情请求地址，作为批量补全的模板
+    chrome.storage.local.set({ lastDetailSource: message.payload.sourceUrl });
+  }
+
   chrome.storage.local.set({
     lastRelay: {
       kind: (message.payload && message.payload.kind) || "",
@@ -270,22 +275,18 @@ chrome.runtime.onInstalled.addListener(function () {
 });
 
 /* =========================================================
-   批量补 JD（导航模式）
+   批量补 JD（重放模式）
    ---------------------------------------------------------
-   直接请求详情接口拿不到数据（缺少页面请求才有的参数），
-   所以改成让标签页真的打开每个职位页，由 content.js 的旁听
-   逻辑自然捕获——和用户手动点开完全同一条路径。
-   代价是每条要等页面加载，但稳得多。
+   直接访问职位页不会触发详情请求，直接调接口又缺参数。
+   折中做法：用用户手动浏览时抓到的"真实请求地址"作模板，
+   只把 securityId 换成目标岗位的，再在同一个页面里发出去——
+   参数、来源、登录态都与真实请求一致。
    ========================================================= */
 var autofill = { running: false, done: 0, total: 0, failed: 0, reason: "", stop: false, lastError: "" };
 
-var AUTOFILL_MIN_GAP_MS = 3000;
+var AUTOFILL_MIN_GAP_MS = 6000;
 var AUTOFILL_JITTER_MS = 3000;
-var AUTOFILL_PAGE_TIMEOUT_MS = 20000;
 var AUTOFILL_MAX_BATCH = 50;
-
-/* 等待"某条职位被旁听到"的挂起点 */
-var autofillWaiter = null;
 
 function sleep(ms) {
   return new Promise(function (resolve) { setTimeout(resolve, ms); });
@@ -304,25 +305,6 @@ async function publishAutofill() {
   });
 }
 
-/* 把"等待某条详情"的 promise 挂起来，超时算失败 */
-function waitForDetail(externalId, timeoutMs) {
-  return new Promise(function (resolve) {
-    var timer = setTimeout(function () {
-      autofillWaiter = null;
-      resolve({ ok: false, error: "TIMEOUT" });
-    }, timeoutMs);
-
-    autofillWaiter = {
-      externalId: String(externalId),
-      resolve: function (result) {
-        clearTimeout(timer);
-        autofillWaiter = null;
-        resolve(result);
-      }
-    };
-  });
-}
-
 async function fetchPending(server, token, limit) {
   var response = await fetch(server + "/api/me/library/pending-jd?limit=" + encodeURIComponent(limit), {
     headers: { "X-Ingest-Token": token }
@@ -336,18 +318,17 @@ async function pickBossTab() {
   return tabs && tabs.length ? tabs[0] : null;
 }
 
-function detailUrl(item) {
-  return "https://www.zhipin.com/job_detail/" + encodeURIComponent(item.externalId)
-    + ".html?securityId=" + encodeURIComponent(item.securityID);
-}
-
 async function startAutofill(limit) {
   if (autofill.running) return { ok: false, error: "RUNNING" };
 
-  var cfg = await chrome.storage.local.get(["serverUrl", "token"]);
+  var cfg = await chrome.storage.local.get(["serverUrl", "token", "lastDetailSource"]);
   var server = normalizeServer(cfg.serverUrl);
   var token = String(cfg.token || "").trim();
   if (!server || !token) return { ok: false, error: "NOT_CONFIGURED" };
+
+  // 没有模板就没法重放：先让用户手动点开一个职位，扩展才能学到请求长什么样。
+  var template = String(cfg.lastDetailSource || "").trim();
+  if (!template) return { ok: false, error: "NEED_MANUAL" };
 
   var tab = await pickBossTab();
   if (!tab) return { ok: false, error: "NO_BOSS_TAB" };
@@ -367,11 +348,11 @@ async function startAutofill(limit) {
   autofill = { running: true, done: 0, total: items.length, failed: 0, reason: "", stop: false, lastError: "" };
   await publishAutofill();
 
-  runAutofill(server, token, tab.id, items);
+  runAutofill(server, token, tab.id, template, items);
   return { ok: true, total: items.length };
 }
 
-async function runAutofill(server, token, tabId, items) {
+async function runAutofill(server, token, tabId, template, items) {
   var consecutiveFail = 0;
 
   for (var i = 0; i < items.length; i++) {
@@ -379,16 +360,25 @@ async function runAutofill(server, token, tabId, items) {
 
     var item = items[i];
     try {
-      var waiting = waitForDetail(item.externalId, AUTOFILL_PAGE_TIMEOUT_MS);
-      await chrome.tabs.update(tabId, { url: detailUrl(item) });
-      var result = await waiting;
+      var result = await chrome.tabs.sendMessage(tabId, {
+        type: "BOSS_AUTOFILL_FETCH",
+        template: template,
+        securityId: item.securityID
+      });
 
-      if (result && result.ok) {
-        consecutiveFail = 0;
-      } else {
+      var blocked = !result || !result.ok;
+      if (!blocked && result.data && typeof result.data.code === "number" && result.data.code !== 0) {
+        blocked = true;
+        autofill.lastError = "API_CODE_" + result.data.code;
+      }
+
+      if (blocked) {
         consecutiveFail++;
         autofill.failed++;
-        autofill.lastError = (result && result.error) || "UNKNOWN";
+        if (!autofill.lastError) autofill.lastError = (result && (result.error || ("HTTP " + result.status))) || "UNKNOWN";
+      } else {
+        consecutiveFail = 0;
+        await handleIngest({ kind: "detail", jobId: item.externalId, raw: result.data, query: "", city: "" });
       }
     } catch (err) {
       consecutiveFail++;

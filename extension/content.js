@@ -164,6 +164,8 @@
           platform: "boss",
           kind: matched.kind,
           jobId: matched.kind === "detail" ? readJobIdFromUrl() : "",
+          /* 详情接口真实地址：批量补全要按这个格式重放，参数缺一个就可能失败 */
+          sourceUrl: matched.kind === "detail" ? matched.url : "",
           query: readQuery(),
           city: readCity(),
           raw: data // 整段原样上报：招聘者活跃状态等字段由服务端从 raw 里取
