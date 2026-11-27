@@ -321,7 +321,7 @@ async function pickBossTab() {
 async function startAutofill(limit) {
   if (autofill.running) return { ok: false, error: "RUNNING" };
 
-  var cfg = await chrome.storage.local.get(["serverUrl", "token", "lastDetailSource"]);
+  var cfg = await chrome.storage.local.get(["serverUrl", "token", "lastDetailSource", "autofillGapMs"]);
   var server = normalizeServer(cfg.serverUrl);
   var token = String(cfg.token || "").trim();
   if (!server || !token) return { ok: false, error: "NOT_CONFIGURED" };
@@ -348,11 +348,13 @@ async function startAutofill(limit) {
   autofill = { running: true, done: 0, total: items.length, failed: 0, reason: "", stop: false, lastError: "" };
   await publishAutofill();
 
-  runAutofill(server, token, tab.id, template, items);
+  // 间隔默认 6-9 秒随机；显式配置时用它（自测与特殊场景需要调快）。
+  var gapMs = Number(cfg.autofillGapMs);
+  runAutofill(server, token, tab.id, template, items, gapMs > 0 ? gapMs : 0);
   return { ok: true, total: items.length };
 }
 
-async function runAutofill(server, token, tabId, template, items) {
+async function runAutofill(server, token, tabId, template, items, gapMs) {
   var consecutiveFail = 0;
 
   for (var i = 0; i < items.length; i++) {
@@ -378,7 +380,15 @@ async function runAutofill(server, token, tabId, template, items) {
         if (!autofill.lastError) autofill.lastError = (result && (result.error || ("HTTP " + result.status))) || "UNKNOWN";
       } else {
         consecutiveFail = 0;
-        await handleIngest({ kind: "detail", jobId: item.externalId, raw: result.data, query: "", city: "" });
+        // platform 不能少：isValidPayload 会直接拒掉，表现为"进度在走但没有入库"
+        await handleIngest({
+          platform: "boss",
+          kind: "detail",
+          jobId: item.externalId,
+          raw: result.data,
+          query: "",
+          city: ""
+        });
       }
     } catch (err) {
       consecutiveFail++;
@@ -391,7 +401,7 @@ async function runAutofill(server, token, tabId, template, items) {
 
     if (consecutiveFail >= 3) { autofill.reason = "BLOCKED"; break; }
     if (i < items.length - 1 && !autofill.stop) {
-      await sleep(AUTOFILL_MIN_GAP_MS + Math.random() * AUTOFILL_JITTER_MS);
+      await sleep(gapMs || (AUTOFILL_MIN_GAP_MS + Math.random() * AUTOFILL_JITTER_MS));
     }
   }
 
