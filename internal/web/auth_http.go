@@ -181,6 +181,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 	loginLimiter.reset(key)
 	s.setSessionCookie(w, r, sess)
+	s.saveSessions()
 	s.log.Info("登录成功", "ip", ip, "username", user.Username, "role", string(user.Role))
 	writeJSON(w, http.StatusOK, map[string]any{
 		"ok":   true,
@@ -195,6 +196,7 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 			s.sessions.Destroy(c.Value)
 		}
 	}
+	s.saveSessions()
 	s.clearSessionCookie(w, r)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
@@ -298,6 +300,7 @@ func (s *Server) authenticate(r *http.Request) (auth.Session, auth.PublicUser, a
 	user, found := s.users.Public(sess.Username)
 	if !found || user.Disabled {
 		s.sessions.Destroy(sess.ID)
+		s.saveSessions()
 		return auth.Session{}, auth.PublicUser{}, authStateAnon
 	}
 

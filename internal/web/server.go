@@ -78,6 +78,10 @@ type Server struct {
 	// userState 存放每个账号的收藏 / 投递状态 / 备注，路径为 <data>/userstate。
 	userState *userdata.Store
 
+	// sessionFile 是会话落盘路径（<data>/sessions.json）。
+	// 进程重启后据此恢复登录态，避免每次发版把所有人踢下线。
+	sessionFile string
+
 	// lib 存放每个账号独立的职位库（<data>/libraries/<username>.json）。
 	// 不存在"全局职位库"：所有读写都必须带 username。
 	lib *library.Store
@@ -126,6 +130,13 @@ func New(cfg *config.Config, st *store.Store, log *slog.Logger) *Server {
 		// 分账号职位库与凭据。
 		s.lib = library.New(filepath.Join(st.Dir(), "libraries"))
 		s.creds = creds.New(filepath.Join(st.Dir(), "credentials"))
+
+		s.sessionFile = filepath.Join(st.Dir(), "sessions.json")
+		if err := s.sessions.LoadSessions(s.sessionFile); err != nil {
+			log.Error("恢复登录会话失败，本次启动需要重新登录", "err", err)
+		} else if n := s.sessions.Len(); n > 0 {
+			log.Info("已恢复登录会话", "count", n)
+		}
 
 		s.migrateLegacy(log)
 	}
@@ -815,4 +826,14 @@ func (s *Server) collectReady() bool {
 		}
 	}
 	return false
+}
+
+// saveSessions 把会话表落盘；失败只记日志，不影响当前请求。
+func (s *Server) saveSessions() {
+	if s.sessions == nil || s.sessionFile == "" {
+		return
+	}
+	if err := s.sessions.SaveSessions(s.sessionFile); err != nil {
+		s.log.Warn("保存登录会话失败", "err", err)
+	}
 }

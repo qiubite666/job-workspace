@@ -364,7 +364,9 @@ async function runAutofill(server, token, tabId, template, items, gapMs) {
       var blocked = !result || !result.ok;
       if (!blocked && result.data && typeof result.data.code === "number" && result.data.code !== 0) {
         blocked = true;
-        autofill.lastError = "API_CODE_" + result.data.code;
+        // 带上服务端给的 message，才可能判断 37 是"过期"还是"限流"
+        var msg = result.data.message ? ":" + String(result.data.message).slice(0, 30) : "";
+        autofill.lastError = "API_" + result.data.code + msg;
       }
 
       if (blocked) {
