@@ -207,6 +207,7 @@ async function startAutofill() {
         NO_BOSS_TAB: "请先打开一个 BOSS 页面（zhipin.com）",
         NOTHING_TO_DO: "没有可补的岗位（需要先滚动一次列表拿到 securityId）",
         NEED_MANUAL: "请先手动点开任意一个职位（让扩展学到请求格式），再开始",
+        NEED_MANUAL: "请先手动点开任意一个职位（让扩展学到请求格式），再开始",
         RUNNING: "已有任务在进行",
         FETCH_FAILED: "读取待补列表失败"
       };
