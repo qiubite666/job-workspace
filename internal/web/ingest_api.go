@@ -92,13 +92,7 @@ func (s *Server) handleIngest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	spec := mapping.Spec{
-		Platform:         pcfg.ID,
-		PlatformName:     pcfg.Name,
-		FieldMap:         pcfg.FieldMap,
-		PublishTimePaths: pcfg.PublishTimePaths,
-		JobURLTemplate:   pcfg.JobURLTemplate,
-	}
+	spec := specFromPlatform(pcfg)
 	ctx := mapping.Context{Keyword: req.Query, QueryCity: req.City}
 
 	kind := strings.ToLower(strings.TrimSpace(req.Kind))
@@ -354,4 +348,21 @@ func (s *Server) ingestDetail(
 		Added:    added,
 		Total:    total,
 	})
+}
+
+// specFromPlatform 把平台配置转成映射层需要的 Spec。
+//
+// 单独抽出来是为了有一处可测的「配置透传」入口：此前新增的
+// activeOnlinePath / activeTimePath 只接到了 CLI 采集，这里漏传，
+// 导致扩展上报的数据活跃状态全为空。
+func specFromPlatform(p *config.Platform) mapping.Spec {
+	return mapping.Spec{
+		Platform:         p.ID,
+		PlatformName:     p.Name,
+		FieldMap:         p.FieldMap,
+		PublishTimePaths: p.PublishTimePaths,
+		JobURLTemplate:   p.JobURLTemplate,
+		ActiveOnlinePath: p.ActiveOnlinePath,
+		ActiveTimePath:   p.ActiveTimePath,
+	}
 }
