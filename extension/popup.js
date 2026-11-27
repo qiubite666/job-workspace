@@ -178,6 +178,10 @@ function describeAutofill(state) {
       + (state.failed ? "，失败 " + state.failed : "");
   }
   if (state.reason === "DONE") return "批量补 JD：完成 " + state.done + " 条";
+  if (state.lastError && state.failed) {
+    var tag = state.reason === "BLOCKED" ? "已中止" : "部分失败";
+    return "批量补 JD：" + tag + "，失败 " + state.failed + " 条（" + state.lastError + "）";
+  }
   if (state.reason === "BLOCKED") return "批量补 JD：已中止（连续失败，可能被限流）";
   if (state.reason === "STOPPED") return "批量补 JD：已停止，完成 " + state.done + " 条";
   return "批量补 JD：完成 " + state.done + " 条";

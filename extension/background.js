@@ -228,7 +228,16 @@ chrome.runtime.onMessage.addListener(function (message, sender, sendResponse) {
 
   if (!message || message.type !== "BOSS_INGEST_RELAY") return false;
 
-  handleIngest(message.payload).then(sendResponse, function (err) {
+  handleIngest(message.payload).then(function (res) {
+    // 批量补全正在等这一条：只有真正的详情包才算数
+    if (autofillWaiter && message.payload && message.payload.kind === "detail"
+        && String(message.payload.jobId || "") === autofillWaiter.externalId) {
+      autofillWaiter.resolve(res && res.ok === true
+        ? { ok: true }
+        : { ok: false, error: (res && res.error) || "INGEST_FAILED" });
+    }
+    sendResponse(res);
+  }, function (err) {
     markFailure();
     recordResult(message.payload && message.payload.kind, {
       ok: false,
@@ -245,16 +254,22 @@ chrome.runtime.onInstalled.addListener(function () {
 });
 
 /* =========================================================
-   批量补 JD
+   批量补 JD（导航模式）
    ---------------------------------------------------------
-   由用户手动触发，速率固定 6-9 秒一条：慢是刻意的，目的是让请求
-   看起来像正常浏览，避免触发风控。连续 3 次失败立即停。
+   直接请求详情接口拿不到数据（缺少页面请求才有的参数），
+   所以改成让标签页真的打开每个职位页，由 content.js 的旁听
+   逻辑自然捕获——和用户手动点开完全同一条路径。
+   代价是每条要等页面加载，但稳得多。
    ========================================================= */
-var autofill = { running: false, done: 0, total: 0, failed: 0, reason: "", stop: false };
+var autofill = { running: false, done: 0, total: 0, failed: 0, reason: "", stop: false, lastError: "" };
 
-var AUTOFILL_MIN_GAP_MS = 6000;
+var AUTOFILL_MIN_GAP_MS = 3000;
 var AUTOFILL_JITTER_MS = 3000;
+var AUTOFILL_PAGE_TIMEOUT_MS = 20000;
 var AUTOFILL_MAX_BATCH = 50;
+
+/* 等待"某条职位被旁听到"的挂起点 */
+var autofillWaiter = null;
 
 function sleep(ms) {
   return new Promise(function (resolve) { setTimeout(resolve, ms); });
@@ -267,8 +282,28 @@ async function publishAutofill() {
       done: autofill.done,
       total: autofill.total,
       failed: autofill.failed,
-      reason: autofill.reason
+      reason: autofill.reason,
+      lastError: autofill.lastError
     }
+  });
+}
+
+/* 把"等待某条详情"的 promise 挂起来，超时算失败 */
+function waitForDetail(externalId, timeoutMs) {
+  return new Promise(function (resolve) {
+    var timer = setTimeout(function () {
+      autofillWaiter = null;
+      resolve({ ok: false, error: "TIMEOUT" });
+    }, timeoutMs);
+
+    autofillWaiter = {
+      externalId: String(externalId),
+      resolve: function (result) {
+        clearTimeout(timer);
+        autofillWaiter = null;
+        resolve(result);
+      }
+    };
   });
 }
 
@@ -283,6 +318,11 @@ async function fetchPending(server, token, limit) {
 async function pickBossTab() {
   var tabs = await chrome.tabs.query({ url: "https://www.zhipin.com/*" });
   return tabs && tabs.length ? tabs[0] : null;
+}
+
+function detailUrl(item) {
+  return "https://www.zhipin.com/job_detail/" + encodeURIComponent(item.externalId)
+    + ".html?securityId=" + encodeURIComponent(item.securityID);
 }
 
 async function startAutofill(limit) {
@@ -308,10 +348,9 @@ async function startAutofill(limit) {
   var items = (pending && Array.isArray(pending.items)) ? pending.items : [];
   if (!items.length) return { ok: false, error: "NOTHING_TO_DO" };
 
-  autofill = { running: true, done: 0, total: items.length, failed: 0, reason: "", stop: false };
+  autofill = { running: true, done: 0, total: items.length, failed: 0, reason: "", stop: false, lastError: "" };
   await publishAutofill();
 
-  // 不 await：让消息立即返回，进度通过 storage 推给弹窗。
   runAutofill(server, token, tab.id, items);
   return { ok: true, total: items.length };
 }
@@ -324,33 +363,26 @@ async function runAutofill(server, token, tabId, items) {
 
     var item = items[i];
     try {
-      var result = await chrome.tabs.sendMessage(tabId, {
-        type: "BOSS_AUTOFILL_FETCH",
-        securityId: item.securityID
-      });
+      var waiting = waitForDetail(item.externalId, AUTOFILL_PAGE_TIMEOUT_MS);
+      await chrome.tabs.update(tabId, { url: detailUrl(item) });
+      var result = await waiting;
 
-      var blocked = !result || !result.ok;
-      if (!blocked && result.data && typeof result.data.code === "number" && result.data.code !== 0) {
-        blocked = true;
-      }
-
-      if (blocked) {
+      if (result && result.ok) {
+        consecutiveFail = 0;
+      } else {
         consecutiveFail++;
         autofill.failed++;
-      } else {
-        consecutiveFail = 0;
-        await handleIngest({ kind: "detail", jobId: item.externalId, raw: result.data, query: "", city: "" });
+        autofill.lastError = (result && result.error) || "UNKNOWN";
       }
     } catch (err) {
-      // 标签页被关掉或页面导航走了，都会走到这里
       consecutiveFail++;
       autofill.failed++;
+      autofill.lastError = String(err && err.message ? err.message : err);
     }
 
     autofill.done++;
     await publishAutofill();
 
-    // 连续失败通常意味着被限流或掉登录，继续跑只会更糟。
     if (consecutiveFail >= 3) { autofill.reason = "BLOCKED"; break; }
     if (i < items.length - 1 && !autofill.stop) {
       await sleep(AUTOFILL_MIN_GAP_MS + Math.random() * AUTOFILL_JITTER_MS);
