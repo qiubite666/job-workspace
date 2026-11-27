@@ -92,6 +92,7 @@ async function postToServer(server, token, payload) {
   // kind 显式带上：服务端据此把 raw 分派到列表映射或详情映射。缺省时服务端按 list 处理，
   // 但扩展这边一律写死，避免上游漏传导致详情被当成列表丢掉。
   var envelope = { platform: "boss", kind: normalizeKind(payload.kind), raw: payload.raw };
+  if (payload.jobId) envelope.jobId = payload.jobId;
   if (payload.query) envelope.query = payload.query;
   if (payload.city) envelope.city = payload.city;
   var body = JSON.stringify(envelope);

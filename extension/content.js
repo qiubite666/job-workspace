@@ -137,6 +137,16 @@
     return "";
   }
 
+  /**
+   * 从详情页 URL 里取岗位 ID（/job_detail/<id>.html）。
+   * 详情接口的响应体不保证带 encryptJobId，缺了它服务端就无法定位对应岗位，
+   * 而 URL 里的这段 ID 与列表接口的 encryptJobId 是同一个值。
+   */
+  function readJobIdFromUrl() {
+    var m = String(location.pathname || "").match(/\/job_detail\/([A-Za-z0-9_-]+)\.html/);
+    return m ? m[1] : "";
+  }
+
   /** 把命中的响应体交给页面（由 relay.js 承接），不修改原响应。 */
   function emit(matched, data) {
     if (matched.kind === "detail") {
@@ -153,6 +163,7 @@
         payload: {
           platform: "boss",
           kind: matched.kind,
+          jobId: matched.kind === "detail" ? readJobIdFromUrl() : "",
           query: readQuery(),
           city: readCity(),
           raw: data // 整段原样上报：招聘者活跃状态等字段由服务端从 raw 里取

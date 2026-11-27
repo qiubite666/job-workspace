@@ -44,7 +44,8 @@
       "fieldMap": {
         "externalId": [
           "encryptJobId",
-          "jobId"
+          "jobId",
+          "encryptId"
         ],
         "jobName": [
           "jobName"

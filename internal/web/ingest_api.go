@@ -3,6 +3,7 @@ package web
 import (
 	"encoding/json"
 	"net/http"
+	"sort"
 	"strings"
 
 	"jobworkspace/internal/config"
@@ -22,7 +23,10 @@ type ingestRequest struct {
 	Platform string `json:"platform"`
 	// Kind 区分列表包与详情包：list（默认）新增/更新列表字段，
 	// detail 只补职位描述、招聘者、活跃度等详情字段。
-	Kind  string          `json:"kind"`
+	Kind string `json:"kind"`
+	// JobID 是扩展从详情页 URL 取到的岗位 ID：详情响应体不一定带
+	// encryptJobId，没有它就定位不到已有岗位。
+	JobID string          `json:"jobId"`
 	Query string          `json:"query"`
 	City  string          `json:"city"`
 	Raw   json.RawMessage `json:"raw"`
@@ -271,8 +275,18 @@ func (s *Server) ingestDetail(
 		job.PublishedAtSource = "detail"
 	}
 
+	// 详情响应体不一定带 encryptJobId，优先用扩展从 URL 取到的 jobId 兜底。
 	if strings.TrimSpace(job.ExternalID) == "" {
-		writeError(w, http.StatusUnprocessableEntity, "NO_JOB_ID", "详情缺少岗位 ID，无法匹配已有记录")
+		if v := strings.TrimSpace(req.JobID); v != "" {
+			job.ExternalID = v
+			job.ID = mapping.MakeID(job.Platform, job.ExternalID, mapping.Fingerprint(job))
+		}
+	}
+	if strings.TrimSpace(job.ExternalID) == "" {
+		// 只打字段名不打值：便于定位缺哪个字段，又不把岗位内容写进日志。
+		s.log.Warn("详情缺少岗位 ID", "platform", platform, "fields", sortedKeys(item))
+		writeError(w, http.StatusUnprocessableEntity, "NO_JOB_ID",
+			"详情缺少岗位 ID：响应里既没有 encryptJobId，请求也没有带 jobId")
 		return
 	}
 
@@ -333,4 +347,17 @@ func (s *Server) resolveIngestUser(r *http.Request) (string, bool) {
 		return "", false
 	}
 	return s.creds.Resolve(got)
+}
+
+// sortedKeys 返回 map 的键名（排序后），仅用于日志定位缺字段。
+func sortedKeys(m map[string]any) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	if len(keys) > 40 {
+		keys = keys[:40]
+	}
+	return keys
 }
