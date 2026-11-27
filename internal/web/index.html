@@ -2315,11 +2315,25 @@ function openDetail(jobId) {
 function closeDetail() {
   var modal = $("#detailModal");
   if (!modal || !modal.classList.contains("is-open")) return;
+  var jobId = ui.detailId;
   modal.classList.remove("is-open");
   ui.detailId = null;
+  /* 关闭后把焦点交还来源卡片；鼠标打开时焦点不在卡片上，按 id 兜底找回。
+     用 preventScroll 避免长列表里聚焦引起跳动。 */
   var back = detailReturnFocus;
   detailReturnFocus = null;
-  if (back && document.contains(back)) window.setTimeout(function () { back.focus(); }, 20);
+  if (!back || !document.contains(back)) {
+    back = null;
+    var list = document.querySelectorAll("#jobList .job");
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].dataset.id === jobId) { back = list[i]; break; }
+    }
+  }
+  if (back && document.contains(back)) {
+    window.setTimeout(function () {
+      try { back.focus({ preventScroll: true }); } catch (err) { back.focus(); }
+    }, 20);
+  }
 }
 
 /* =========================================================
