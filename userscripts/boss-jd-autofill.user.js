@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BOSS 职位描述补全
 // @namespace    jobworkspace.local
-// @version      2.0.0
+// @version      2.1.0
 // @description  在 BOSS 列表页按间隔自动打开待补岗位，详情页截获页面自己的请求并写回职位库
 // @match        https://www.zhipin.com/*
 // @grant        GM_xmlhttpRequest
@@ -10,7 +10,7 @@
 // @grant        unsafeWindow
 // @connect      job.qiubite.fun
 // @connect      *
-// @run-at       document-idle
+// @run-at       document-start
 // ==/UserScript==
 
 /**
@@ -32,6 +32,7 @@
   var DETAIL_API = "/wapi/zpgeek/job/detail.json";
 
   if (IS_DETAIL) {
+    // 必须在 document-start 挂钩：详情请求往往在 DOM 就绪前就发出去了
     captureMode();
     return;
   }
@@ -69,6 +70,7 @@
     }
 
     function badge(text, ok) {
+      if (!document.body) return;   // document-start 阶段可能还没有 body
       var d = document.createElement("div");
       d.textContent = "JD 补全：" + text;
       d.style.cssText = "position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:2147483000;"
@@ -77,6 +79,11 @@
       document.body.appendChild(d);
       window.setTimeout(function () { d.remove(); }, 4000);
     }
+
+    // 10 秒内没截到详情请求，给出明确失败提示，避免看起来"什么都没发生"
+    window.setTimeout(function () {
+      if (!posted) badge("未捕获到详情请求（可能职位已下线）", false);
+    }, 10000);
 
     // 截获页面 fetch（只旁听，不改变原响应）
     try {
@@ -124,7 +131,9 @@
   var el = {};
   var state = { running: false, opened: 0, timer: 0, hrefs: [], pending: {}, seen: {} };
 
-  buildPanel();
+  // document-start 阶段还没有 body，等 DOM 就绪再挂面板
+  if (document.body) buildPanel();
+  else document.addEventListener("DOMContentLoaded", buildPanel, { once: true });
 
   function buildPanel() {
     var box = document.createElement("div");
