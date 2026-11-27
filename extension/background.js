@@ -236,6 +236,14 @@ chrome.runtime.onMessage.addListener(function (message, sender, sendResponse) {
     }
   });
 
+  chrome.storage.local.set({
+    lastRelay: {
+      kind: (message.payload && message.payload.kind) || "",
+      jobId: (message.payload && message.payload.jobId) || "",
+      at: Date.now()
+    }
+  });
+
   handleIngest(message.payload).then(function (res) {
     // 批量补全正在等这一条：只有真正的详情包才算数
     if (autofillWaiter && message.payload && message.payload.kind === "detail"
